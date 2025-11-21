@@ -1,0 +1,700 @@
+'use client';
+
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import jsPDF from "jspdf";
+
+type QuotationItem = {
+  description: string;
+  price: string;
+};
+
+type QuotationData = {
+  quotationNumber: string;
+  date: string;
+  validUntil: string;
+  clientName: string;
+  jobDescription: string;
+  clientContact: string;
+  installationAddress: string;
+  attention: string;
+  totalDue: string;
+  terms: string[];
+  items?: QuotationItem[];
+};
+
+type Quotation = {
+  id: string;
+  quotationNumber: string;
+  date: string;
+  validUntil: string;
+  clientName: string;
+  jobDescription: string;
+  clientContact?: string;
+  installationAddress: string;
+  attention: string;
+  totalDue: string;
+  terms?: string[];
+  items?: QuotationItem[];
+  createdAt: number;
+};
+
+export default function EditQuotationPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const quotationId = params?.id ?? "";
+  const [loading, setLoading] = useState(false);
+  const [quotation, setQuotation] = useState<Quotation | null>(null);
+  const [formData, setFormData] = useState<QuotationData>({
+    quotationNumber: "",
+    date: "",
+    validUntil: "",
+    clientName: "",
+    jobDescription: "",
+    clientContact: "",
+    installationAddress: "",
+    attention: "",
+    totalDue: "",
+    terms: [
+      "Customers will be billed after 30 days upon completion and turnover of work with 7 days warranty",
+      "Please email the signed price quote to the address above.",
+      "Any additional work shall be created with a new quotation.",
+      "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM trading and services will not be included in this quotation.",
+    ],
+    items: [
+      { description: "", price: "" },
+    ],
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !quotationId) return;
+
+    const stored = localStorage.getItem("quotations");
+    if (stored) {
+      try {
+        const quotations: Quotation[] = JSON.parse(stored);
+        const found = quotations.find((q) => q.id === quotationId);
+        if (found) {
+          setQuotation(found);
+          setFormData({
+            quotationNumber: found.quotationNumber,
+            date: found.date,
+            validUntil: found.validUntil,
+            clientName: found.clientName,
+            jobDescription: found.jobDescription,
+            clientContact: found.clientContact || "",
+            installationAddress: found.installationAddress,
+            attention: found.attention,
+            totalDue: found.totalDue,
+            terms: found.terms || [
+              "Customers will be billed after 30 days upon completion and turnover of work with 7 days warranty",
+              "Please email the signed price quote to the address above.",
+              "Any additional work shall be created with a new quotation.",
+              "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM trading and services will not be included in this quotation.",
+            ],
+            items: found.items && found.items.length > 0 ? found.items : [
+              { description: "", price: "" },
+            ],
+          });
+        }
+      } catch (e) {
+        console.error("Error loading quotation:", e);
+      }
+    }
+  }, [quotationId]);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleTermChange = (index: number, value: string) => {
+    setFormData((prev) => {
+      const newTerms = [...prev.terms];
+      newTerms[index] = value;
+      return { ...prev, terms: newTerms };
+    });
+  };
+
+  const handleItemChange = (index: number, field: "description" | "price", value: string) => {
+    const updated = [...(formData.items || [])];
+    if (!updated[index]) {
+      updated[index] = { description: "", price: "" };
+    }
+    updated[index] = { ...updated[index], [field]: value };
+    setFormData((prev) => ({ ...prev, items: updated }));
+  };
+
+  const addItem = () => {
+    setFormData((prev) => ({
+      ...prev,
+      items: [...(prev.items || []), { description: "", price: "" }],
+    }));
+  };
+
+  const removeItem = (index: number) => {
+    const updated = [...(formData.items || [])];
+    updated.splice(index, 1);
+    setFormData((prev) => ({ ...prev, items: updated.length > 0 ? updated : [{ description: "", price: "" }] }));
+  };
+
+  const formatCurrency = (amount: string): string => {
+    const num = parseFloat(amount.replace(/[^0-9.]/g, ""));
+    if (isNaN(num)) return amount;
+    return `Php ${num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const formatDateForPDF = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2);
+      return `${month}/${day}/${year}`;
+    } catch {
+      return dateString;
+    }
+  };
+
+  // ============================================================
+  // OPTIMIZED PDF GENERATION - More compact layout
+  // ============================================================
+  const generatePDF = async () => {
+    const doc = new jsPDF();
+    const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    let y = margin;
+
+    // LOGO - Smaller size
+    try {
+      const resp = await fetch("/images/fcmlogo.png");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.src = url;
+
+      await new Promise((resolve) => {
+        img.onload = () => {
+          const w = 22;
+          const h = (img.height / img.width) * w;
+          doc.addImage(img, "PNG", (pw - w) / 2, y, w, h);
+          y += h + 4;
+          resolve(null);
+        };
+      });
+    } catch {
+      // ignore
+    }
+
+    // CONTACT INFO - No header text
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.text("517-4428 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
+    y += 4;
+    doc.text("Simborio, Tayud, Lilo-an, Cebu, 6002", pw / 2, y, { align: "center" });
+    y += 4;
+    doc.text("fcmtradingservices@gmail.com", pw / 2, y, { align: "center" });
+    y += 7;
+
+    doc.setDrawColor(0, 128, 0);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pw - margin, y);
+    y += 7;
+
+    // DATE + NUMBER
+    doc.setFontSize(11);
+    const formattedDate = formatDateForPDF(formData.date);
+    const formattedValidUntil = formatDateForPDF(formData.validUntil);
+    doc.text(`DATE: ${formattedDate}`, margin, y);
+    doc.text(`#${formData.quotationNumber}`, pw - margin, y, { align: "right" });
+    y += 5;
+    doc.text(`Valid Until: ${formattedValidUntil}`, margin, y);
+    y += 8;
+
+    // CLIENT INFO HEADER
+    doc.setFillColor(0, 128, 0);
+    doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("CLIENT INFORMATION", pw / 2, y, { align: "center" });
+    y += 9;
+
+    // CLIENT FIELDS
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    const lineHeight = 5.5;
+    
+    // NAME
+    doc.text("NAME: ", margin + 3, y);
+    doc.setFont("helvetica", "bold");
+    doc.text(formData.clientName, margin + 3 + doc.getTextWidth("NAME: "), y);
+    doc.setFont("helvetica", "normal");
+    y += lineHeight;
+    
+    // JOB DESCRIPTION
+    doc.text("JOB DESCRIPTION: ", margin + 3, y);
+    doc.setFont("helvetica", "bold");
+    doc.text(formData.jobDescription, margin + 3 + doc.getTextWidth("JOB DESCRIPTION: "), y);
+    doc.setFont("helvetica", "normal");
+    y += lineHeight;
+    
+    // CONTACT NUMBER
+    doc.text("CONTACT NUMBER: ", margin + 3, y);
+    doc.setFont("helvetica", "bold");
+    doc.text(formData.clientContact || "N/A", margin + 3 + doc.getTextWidth("CONTACT NUMBER: "), y);
+    doc.setFont("helvetica", "normal");
+    y += lineHeight;
+    
+    // INSTALLATION ADDRESS
+    doc.text("INSTALLATION ADDRESS: ", margin + 3, y);
+    doc.setFont("helvetica", "bold");
+    doc.text(formData.installationAddress, margin + 3 + doc.getTextWidth("INSTALLATION ADDRESS: "), y);
+    doc.setFont("helvetica", "normal");
+    y += lineHeight;
+    
+    // ATTENTION
+    doc.text("ATTENTION: ", margin + 3, y);
+    doc.setFont("helvetica", "bold");
+    doc.text(formData.attention, margin + 3 + doc.getTextWidth("ATTENTION: "), y);
+    doc.setFont("helvetica", "normal");
+    y += 9;
+
+    // DESCRIPTION HEADER
+    doc.setFillColor(0, 128, 0);
+    doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("DESCRIPTION", pw / 2, y, { align: "center" });
+    y += 9;
+
+    // DESCRIPTION - Show items from form
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    
+    const validItems = (formData.items || []).filter(item => item.description || item.price);
+    if (validItems.length > 0) {
+      validItems.forEach((item, index) => {
+        if (y > ph - 60) {
+          doc.addPage();
+          y = margin;
+        }
+        // Format: "• Item description          Price"
+        const priceNum = parseFloat((item.price || "0").replace(/[^0-9.]/g, ""));
+        const priceText = isNaN(priceNum) ? "Php 0" : `Php ${priceNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const shouldNumber = validItems.length > 1;
+        const itemText = shouldNumber ? `${index + 1}.) ${item.description || ""}` : `• ${item.description || ""}`;
+        const priceX = pw - margin - 3;
+        const descriptionWidth = priceX - margin - 3 - 20; // Leave space for bullet/number and price
+        
+        // Draw item bullet/number and description
+        const lines = doc.splitTextToSize(itemText, descriptionWidth);
+        let firstLineY = y;
+        lines.forEach((line: string) => {
+          doc.text(line, margin + 3, y);
+          y += 4;
+        });
+        
+        // Draw price aligned to the right on the first line
+        doc.text(priceText, priceX, firstLineY, { align: "right" });
+        y += 2;
+      });
+    }
+    
+    y += 3;
+    doc.setFontSize(10);
+    doc.text("******* NOTHING FOLLOWS *********", pw / 2, y, { align: "center" });
+    y += 9;
+
+    // Check for page overflow
+    if (y > ph - 60) {
+      doc.addPage();
+      y = margin;
+    }
+
+    // TOTAL
+    const totalAmount = parseFloat(formData.totalDue.replace(/[^0-9.]/g, ""));
+    const totalFormatted = formatCurrency(formData.totalDue);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("TOTAL DUE", margin + 3, y);
+    doc.text(totalFormatted, pw - margin - 3, y, { align: "right" });
+    y += 9;
+
+    // Check if we need a new page for the proposal and signature
+    if (y > ph - 70) {
+      doc.addPage();
+      y = margin;
+    }
+
+    y += 4;
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    const proposalText = `FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of   ${totalFormatted}`;
+
+    const proposalLines = doc.splitTextToSize(proposalText, pw - margin * 2 - 6);
+    proposalLines.forEach((line: string) => {
+      doc.text(line, margin + 3, y);
+      y += 4;
+    });
+    y += 8;
+
+    // ACCEPTANCE
+    doc.setFontSize(11);
+    doc.text("Customer Acceptance (sign below):", margin + 3, y);
+    y += 6;
+    doc.setFontSize(10);
+    doc.text("X", margin + 3, y);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    const lineStartX = margin + 10;
+    const lineEndX = pw - margin - 60;
+    doc.line(lineStartX, y, lineEndX, y);
+    
+    y += 2;  // Further reduced from 3 to 2
+    
+    // SIGNATURE image (draw first, above everything)
+    let signatureHeight = 0;
+    try {
+      const signatureResponse = await fetch('/images/signature.png');
+      const signatureBlob = await signatureResponse.blob();
+      const signatureUrl = URL.createObjectURL(signatureBlob);
+      const sigImg = new Image();
+      sigImg.src = signatureUrl;
+      
+      await new Promise((resolve) => {
+        sigImg.onload = () => {
+          const sigWidth = 55;
+          const sigHeight = (sigImg.height / sigImg.width) * sigWidth;
+          signatureHeight = sigHeight;
+          const sigX = (pw - sigWidth) / 2;
+          doc.addImage(sigImg, 'PNG', sigX, y, sigWidth, sigHeight);
+          URL.revokeObjectURL(signatureUrl);
+          resolve(null);
+        };
+        sigImg.onerror = () => {
+          resolve(null);
+        };
+      });
+    } catch (e) {
+      // Signature image not found, continue without it
+    }
+
+    // Position CONFIRMED text below signature - extremely close
+    y += signatureHeight + 0.5;  // Reduced from 1 to 0.5 for very close spacing
+
+    // CONFIRMED TEXT
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("CONFIRMED : FLORENTINO MANA-AY JR.", pw / 2, y, { align: "center" });
+
+    // FOOTER - minimal spacing
+    y += 5;  // Further reduced from 6 to 5
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("If you have any questions about this sales quotation, please contact", pw / 2, y, { align: "center" });
+    y += 5;  // Further reduced from 4 to 3.5
+    doc.text("Mr. Florentino Mana-ay Jr - 09239480967", pw / 2, y, { align: "center" });
+    
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(12);
+    y += 6;  // Reduced from 7 to 6
+    doc.setFont("helvetica", "bolditalic");
+    doc.text("Thank you for your Business!", pw / 2, y, { align: "center" });
+
+    doc.save(`quotation-${formData.quotationNumber}.pdf`);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quotation) return;
+
+    setLoading(true);
+
+    const updatedQuotation = {
+      ...quotation,
+      ...formData,
+    };
+
+    const stored = typeof window !== "undefined" ? localStorage.getItem("quotations") : null;
+    if (stored) {
+      try {
+        const quotations: Quotation[] = JSON.parse(stored);
+        const index = quotations.findIndex((q) => q.id === quotationId);
+        if (index !== -1) {
+          quotations[index] = updatedQuotation;
+          if (typeof window !== "undefined") {
+            localStorage.setItem("quotations", JSON.stringify(quotations));
+          }
+        }
+      } catch (e) {
+        console.error("Error updating quotation:", e);
+      }
+    }
+
+    setTimeout(() => {
+      router.push(`/admin/quotations/${quotationId}`);
+    }, 500);
+  };
+
+  if (!quotation) {
+    return (
+      <main className="min-h-screen bg-slate-100">
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 text-center">
+            <p className="text-slate-600 mb-4">Loading quotation...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-100">
+      <div className="max-w-4xl mx-auto px-4 py-6 lg:py-10">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/admin/quotations/${quotationId}`}
+              className="rounded-md border-2 border-slate-400 p-2.5 text-slate-800 hover:border-slate-500 transition flex items-center justify-center bg-white shadow-sm"
+              aria-label="Go back"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2.5}
+                stroke="currentColor"
+                className="w-5 h-5"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+            </Link>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Edit Quotation</h1>
+              <p className="text-sm text-slate-600 mt-1">Update quotation details for #{quotation.quotationNumber}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 md:p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="quotationNumber" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Quotation Number *
+                </label>
+                <input
+                  type="text"
+                  id="quotationNumber"
+                  name="quotationNumber"
+                  value={formData.quotationNumber}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                  placeholder="e.g., 300.42"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Date *
+                </label>
+                <input
+                  type="date"
+                  id="date"
+                  name="date"
+                  value={formData.date}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="validUntil" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Valid Until *
+                </label>
+                <input
+                  type="date"
+                  id="validUntil"
+                  name="validUntil"
+                  value={formData.validUntil}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="totalDue" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Total Due *
+                </label>
+                <input
+                  type="text"
+                  id="totalDue"
+                  name="totalDue"
+                  value={formData.totalDue}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                  placeholder="e.g., Php 26,000.00"
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Client Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="clientName" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Client Name *
+                  </label>
+                  <input
+                    type="text"
+                    id="clientName"
+                    name="clientName"
+                    value={formData.clientName}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                    placeholder="e.g., Jollibee Car car branch"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="clientContact" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Contact Number
+                  </label>
+                  <input
+                    type="tel"
+                    id="clientContact"
+                    name="clientContact"
+                    value={formData.clientContact}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                    placeholder="e.g., +63 912 345 6789"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label htmlFor="installationAddress" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Installation Address *
+                  </label>
+                  <input
+                    type="text"
+                    id="installationAddress"
+                    name="installationAddress"
+                    value={formData.installationAddress}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                    placeholder="e.g., Jollibee Car car"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="attention" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Attention *
+                  </label>
+                  <input
+                    type="text"
+                    id="attention"
+                    name="attention"
+                    value={formData.attention}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                    placeholder="e.g., Sir Athan"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900">Description</h3>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  Add Item
+                </button>
+              </div>
+              <div className="space-y-4">
+                {(formData.items || []).map((item, index) => (
+                  <div key={index} className="border border-slate-200 rounded-lg p-4 relative">
+                    {(formData.items || []).length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeItem(index)}
+                        className="absolute top-4 right-4 text-red-600 hover:text-red-800 transition"
+                        aria-label="Remove item"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">Item {index + 1} *</label>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Description *</label>
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => handleItemChange(index, "description", e.target.value)}
+                          required
+                          className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                          placeholder="e.g., Repainting of wall"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Price *</label>
+                        <input
+                          type="text"
+                          value={item.price}
+                          onChange={(e) => handleItemChange(index, "price", e.target.value)}
+                          required
+                          className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                          placeholder="e.g., Php 2,000.00"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+              <Link
+                href={`/admin/quotations/${quotationId}`}
+                className="rounded-md border border-slate-300 px-6 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition"
+              >
+                Cancel
+              </Link>
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-md bg-emerald-600 px-6 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  );
+}

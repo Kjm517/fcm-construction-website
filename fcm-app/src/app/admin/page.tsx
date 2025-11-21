@@ -18,6 +18,7 @@ type Reminder = {
   title: string;
   date: string;
   description: string;
+  projectId: number;
 };
 
 type Request = {
@@ -60,12 +61,14 @@ const reminders: Reminder[] = [
     title: "Site inspection – Project #1",
     date: "Today, 10:00 AM",
     description: "Meet client on-site to review progress and punchlist.",
+    projectId: 1,
   },
   {
     id: 2,
     title: "Materials delivery follow-up",
     date: "Today, 2:00 PM",
     description: "Confirm steel delivery schedule with supplier.",
+    projectId: 2,
   },
 ];
 
@@ -130,12 +133,6 @@ export default function AdminHomePage() {
             >
               Logout
             </button>
-            <Link
-              href="/"
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
-            >
-              Back to Website
-            </Link>
           </div>
         </header>
 
@@ -164,6 +161,12 @@ export default function AdminHomePage() {
                   className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
                 >
                   Projects
+                </Link>
+                <Link
+                  href="/admin/quotations"
+                  className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
+                >
+                  Quotations
                 </Link>
               </nav>
             </div>
@@ -247,9 +250,10 @@ export default function AdminHomePage() {
               </h2>
               <div className="mt-4 space-y-3 max-h-64 overflow-y-auto">
                 {reminders.map((reminder) => (
-                  <div
+                  <Link
                     key={reminder.id}
-                    className="rounded-lg border border-slate-200 p-3 bg-slate-50"
+                    href={`/admin/projects/${reminder.projectId}`}
+                    className="block rounded-lg border border-slate-200 p-3 bg-slate-50 hover:bg-slate-100 hover:border-emerald-300 transition cursor-pointer"
                   >
                     <p className="text-xs text-emerald-700 font-semibold">
                       {reminder.date}
@@ -260,7 +264,7 @@ export default function AdminHomePage() {
                     <p className="text-xs text-slate-600 mt-1">
                       {reminder.description}
                     </p>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>

@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 type Blueprint = {
   name: string;
   href: string;
+  file?: File;
+  url?: string;
 };
 
 type Phase = {
@@ -15,25 +17,76 @@ type Phase = {
   isFinished: boolean;
 };
 
+type Project = {
+  id: string;
+  projectName: string;
+  clientName: string;
+  clientContact: string;
+  buildingAddress: string;
+  workType: string;
+  scopeOfWork: string;
+  projectCost: string;
+  deadlineDate: string;
+  workArea?: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export default function AdminProjectPage() {
   const params = useParams<{ id: string }>();
   const projectId = params?.id ?? "";
   const router = useRouter();
+  const [project, setProject] = useState<Project | null>(null);
 
-  const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("admin-auth");
+  useEffect(() => {
+    if (typeof window === "undefined" || !projectId) return;
+
+    const stored = localStorage.getItem("projects");
+    if (stored) {
+      try {
+        const projects: Project[] = JSON.parse(stored);
+        const found = projects.find((p) => p.id === projectId);
+        if (found) {
+          setProject(found);
+        }
+      } catch (e) {
+        console.error("Error loading project:", e);
+      }
     }
-    router.push("/admin/login");
+  }, [projectId]);
+
+  const handleBack = () => {
+    if (typeof window !== "undefined") {
+      const referrer = document.referrer;
+      // Check if we came from an admin page and have history
+      if (referrer && referrer.includes("/admin") && window.history.length > 1) {
+        router.back();
+      } else {
+        // If not from admin page or no history, go to admin dashboard
+        router.push("/admin");
+      }
+    } else {
+      router.push("/admin");
+    }
   };
 
-  const projectName = projectId ? `Project #${projectId} – Sample Commercial Building` : "Project – Sample Commercial Building";
-  const clientName = "Juan Dela Cruz";
-  const buildingAddress = "Cebu City, Philippines";
-  const clientContact = "+63 912 345 6789";
-  const workType = "Renovation";
-  const workArea = 250;
-  const deadlineDate = "December 31, 2025";
+  const projectName = project ? project.projectName : (projectId ? `Project #${projectId}` : "Project");
+  const clientName = project?.clientName || "N/A";
+  const buildingAddress = project?.buildingAddress || "N/A";
+  const clientContact = project?.clientContact || "N/A";
+  const workType = project?.workType || "N/A";
+  const projectCost = project?.projectCost || "N/A";
+  const scopeOfWork = project?.scopeOfWork || "N/A";
+  
+  const formatDeadline = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    } catch {
+      return dateString;
+    }
+  };
+  const deadlineDate = project ? formatDeadline(project.deadlineDate) : "N/A";
   const initialPhases: Phase[] = [
     { id: 1, name: "Site Inspection", isFinished: true },
     { id: 2, name: "Structural Works", isFinished: true },
@@ -75,44 +128,89 @@ export default function AdminProjectPage() {
   const removePhase = (phaseId: number) => {
     setPhaseList(prev => prev.filter(phase => phase.id !== phaseId));
   };
+
+  const handleDownloadBlueprint = (blueprint: Blueprint) => {
+    if (blueprint.file) {
+      // If we have a File object, create a download link
+      const url = URL.createObjectURL(blueprint.file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = blueprint.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else if (blueprint.url) {
+      // If we have a URL, download from that URL
+      const link = document.createElement('a');
+      link.href = blueprint.url;
+      link.download = blueprint.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      // Fallback: try to download from href if it's a valid URL
+      if (blueprint.href && blueprint.href !== '#') {
+        window.open(blueprint.href, '_blank');
+      }
+    }
+  };
+
   const blueprints: Blueprint[] = [
     { name: "Floorplan.pdf", href: "#" },
     { name: "Elevations.dwg", href: "#" },
   ];
 
+  if (!project) {
+    return (
+      <main className="min-h-screen bg-slate-100">
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 text-center">
+            <p className="text-slate-600 mb-4">Loading project...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-100">
        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
-              Project Overview
-            </h1>
-            <p className="text-sm text-slate-600">
-              Detailed view for project{" "}
-              <span className="font-semibold">{projectId || "#"}</span>
-            </p>
-          </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => router.back()}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition"
+              onClick={handleBack}
+              className="rounded-md border-2 border-slate-400 bg-white p-2.5 text-slate-800 hover:bg-slate-50 hover:border-slate-500 transition flex items-center justify-center shadow-sm"
+              aria-label="Go back"
             >
-              Back
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2.5}
+                stroke="currentColor"
+                className="w-5 h-5"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
             </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition"
-            >
-              Logout
-            </button>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
+                Project Overview
+              </h1>
+              <p className="text-sm text-slate-600">
+                Detailed view for project{" "}
+                <span className="font-semibold">{projectId || "#"}</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
             <Link
-              href="/admin"
+              href={`/admin/projects/${projectId}/edit`}
               className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
             >
-              Back to Admin Home
+              Edit Project
             </Link>
           </div>
         </div>
@@ -294,9 +392,15 @@ export default function AdminProjectPage() {
                   </dd>
                 </div>
                 <div className="flex">
-                  <dt className="w-32 text-slate-500">Area of Work:</dt>
-                  <dd className="flex-1 text-slate-900">
-                    {workArea} sqm.
+                  <dt className="w-32 text-slate-500">Project Cost:</dt>
+                  <dd className="flex-1 font-medium text-slate-900">
+                    {projectCost}
+                  </dd>
+                </div>
+                <div className="flex flex-col">
+                  <dt className="w-full text-slate-500 mb-1">Scope of Work:</dt>
+                  <dd className="flex-1 text-slate-900 break-words">
+                    {scopeOfWork}
                   </dd>
                 </div>
               </dl>
@@ -309,12 +413,23 @@ export default function AdminProjectPage() {
                   <ul className="space-y-1 text-sm break-words">
                     {blueprints.map((bp) => (
                       <li key={bp.name}>
-                        <a
-                          href={bp.href}
-                          className="text-emerald-700 hover:underline break-words"
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadBlueprint(bp)}
+                          className="text-emerald-700 hover:text-emerald-800 hover:underline break-words flex items-center gap-1 cursor-pointer"
                         >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.5}
+                            stroke="currentColor"
+                            className="w-4 h-4"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                          </svg>
                           {bp.name}
-                        </a>
+                        </button>
                       </li>
                     ))}
                   </ul>
