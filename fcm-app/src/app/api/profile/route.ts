@@ -39,15 +39,27 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching user profile:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        userId: userId
+      });
       return NextResponse.json(
-        { error: 'Failed to fetch user profile' },
+        { 
+          error: 'Failed to fetch user profile',
+          message: error.message || 'Database error occurred',
+          details: error.details || error.hint
+        },
         { status: 500 }
       );
     }
 
     if (!data) {
+      console.error('User not found for userId:', userId);
       return NextResponse.json(
-        { error: 'User not found' },
+        { error: 'User not found', message: `No user found with ID: ${userId}` },
         { status: 404 }
       );
     }

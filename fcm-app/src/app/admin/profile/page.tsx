@@ -51,7 +51,9 @@ export default function ProfilePage() {
 
       const response = await fetch(`/api/profile?userId=${userId}`);
       if (!response.ok) {
-        throw new Error('Failed to load profile');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || errorData.message || 'Failed to load profile';
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -66,9 +68,15 @@ export default function ProfilePage() {
         oldPassword: '',
         newPassword: '',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading profile:', error);
-      alert('Failed to load profile. Please try again.');
+      const errorMessage = error?.message || 'Failed to load profile. Please try again.';
+      alert(errorMessage);
+      
+      // If user not found or unauthorized, redirect to login
+      if (errorMessage.includes('not found') || errorMessage.includes('unauthorized')) {
+        router.push('/admin/login');
+      }
     } finally {
       setLoading(false);
     }

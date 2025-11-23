@@ -11,9 +11,6 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "FCM Trading Services",
   description: "Construction & Renovation services in Cebu & Philippines",
-  icons: {
-    icon: '/images/fcmlogo.png',
-  },
 };
 
 export default function RootLayout({
