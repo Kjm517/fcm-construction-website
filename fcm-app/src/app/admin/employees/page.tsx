@@ -18,6 +18,7 @@ type Employee = {
 };
 
 const POSITION_OPTIONS = [
+  'System Administrator',
   'Admin',
   'Manager',
   'Secretary',
@@ -71,7 +72,7 @@ export default function AdminEmployeesPage() {
         const data = await response.json();
         const userPosition = data.position || '';
         
-        if (userPosition === 'Admin' || userPosition === 'Manager') {
+        if (userPosition === 'System Administrator' || userPosition === 'Admin' || userPosition === 'Manager') {
           setHasAccess(true);
           loadEmployees();
         } else {
@@ -332,7 +333,7 @@ export default function AdminEmployeesPage() {
                 Access Denied
               </h3>
               <p className="text-slate-600 mb-6">
-                You don't have permission to access this page. Only Administrators and Managers can manage employees.
+                You don't have permission to access this page. Only System Administrators, Administrators, and Managers can manage employees.
               </p>
               <button
                 onClick={handleBack}

@@ -906,7 +906,7 @@ export default function AdminHomePage() {
                 >
                   Quotations
                 </Link>
-                {(position === 'Admin' || position === 'Manager') && (
+                {(position === 'System Administrator' || position === 'Admin' || position === 'Manager') && (
                   <Link
                     href="/admin/employees"
                     className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"

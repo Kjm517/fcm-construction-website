@@ -233,7 +233,7 @@ export default function ProfilePage() {
                   value={formData.fullName}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-slate-900 placeholder:text-slate-400"
                   placeholder="Enter your full name"
                 />
               </div>
@@ -263,7 +263,7 @@ export default function ProfilePage() {
                   value={formData.contactNumber}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-slate-900 placeholder:text-slate-400"
                   placeholder="e.g., 09123456789"
                 />
               </div>
@@ -278,7 +278,7 @@ export default function ProfilePage() {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-slate-900 placeholder:text-slate-400"
                   placeholder="your.email@example.com"
                 />
               </div>
@@ -293,7 +293,7 @@ export default function ProfilePage() {
                   name="oldPassword"
                   value={formData.oldPassword}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-slate-900 placeholder:text-slate-400"
                   placeholder="Enter current password to change"
                 />
                 <p className="text-xs text-slate-500 mt-1">Required if changing password</p>
@@ -309,7 +309,7 @@ export default function ProfilePage() {
                   name="newPassword"
                   value={formData.newPassword}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-slate-900 placeholder:text-slate-400"
                   placeholder="Enter new password"
                 />
                 <p className="text-xs text-slate-500 mt-1">Leave both password fields blank to keep current password</p>
@@ -327,7 +327,7 @@ export default function ProfilePage() {
                 value={formData.address}
                 onChange={handleChange}
                 rows={3}
-                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition resize-none"
+                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition resize-none text-slate-900 placeholder:text-slate-400"
                 placeholder="Enter your address"
               />
             </div>
