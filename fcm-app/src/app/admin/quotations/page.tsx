@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { quotationsAPI } from "@/lib/api";
 
 type Quotation = {
   id: string;
@@ -19,35 +20,20 @@ type Quotation = {
   createdAt: number;
 };
 
-const dummyQuotation: Quotation = {
-  id: "dummy-1",
-  quotationNumber: "300.42",
-  date: "2025-11-17",
-  validUntil: "2025-12-17",
-  clientName: "Jollibee Car car branch",
-  jobDescription: "Repairing back wall using hardiflex, wall angle and repainting",
-  installationAddress: "Jollibee Car car",
-  attention: "Sir Athan",
-  totalDue: "Php 26,000.00",
-  createdAt: Date.now() - 86400000,
-  clientContact: "",
-  terms: [
-    "Customers will be billed after 30 days upon completion and turnover of work with 7 days warranty.",
-    "Please email the signed price quote to the address above.",
-    "Any additional work shall be created with a new quotation.",
-    "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM trading and services will not be included in this quotation.",
-  ],
-};
-
 export default function AdminQuotationsPage() {
   const router = useRouter();
   const [quotations, setQuotations] = useState<Quotation[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const handleBack = () => {
     if (typeof window !== "undefined") {
       const referrer = document.referrer;
-      // Check if we came from an admin page and have history
-      if (referrer && referrer.includes("/admin") && window.history.length > 1) {
+      // Check if we came from a quotation detail/edit page (to avoid loops)
+      if (referrer && referrer.includes("/admin/quotations/")) {
+        // If we came from a detail page, go to admin dashboard to avoid loop
+        router.push("/admin");
+      } else if (referrer && referrer.includes("/admin") && window.history.length > 1) {
+        // If we came from another admin page (not a detail page), go back
         router.back();
       } else {
         // If not from admin page or no history, go to admin dashboard
@@ -59,28 +45,21 @@ export default function AdminQuotationsPage() {
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    
-    const stored = localStorage.getItem("quotations");
-    if (stored) {
+    async function loadQuotations() {
+      setLoading(true);
       try {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const sorted = parsed.sort((a: Quotation, b: Quotation) => b.createdAt - a.createdAt);
-          setQuotations(sorted);
-        } else {
-          localStorage.setItem("quotations", JSON.stringify([dummyQuotation]));
-          setQuotations([dummyQuotation]);
-        }
+        const data = await quotationsAPI.getAll();
+        // Sort by most recent first
+        const sorted = data.sort((a: Quotation, b: Quotation) => b.createdAt - a.createdAt);
+        setQuotations(sorted);
       } catch (e) {
         console.error("Error loading quotations:", e);
-        localStorage.setItem("quotations", JSON.stringify([dummyQuotation]));
-        setQuotations([dummyQuotation]);
+        setQuotations([]);
+      } finally {
+        setLoading(false);
       }
-    } else {
-      localStorage.setItem("quotations", JSON.stringify([dummyQuotation]));
-      setQuotations([dummyQuotation]);
     }
+    loadQuotations();
   }, []);
 
   const formatDate = (dateString: string) => {
@@ -129,15 +108,53 @@ export default function AdminQuotationsPage() {
           </div>
         </div>
 
-        {quotations.length === 0 ? (
+        {loading ? (
           <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 text-center">
-            <p className="text-slate-600 mb-4">No quotations created yet.</p>
-            <Link
-              href="/admin/quotations/create"
-              className="inline-block rounded-md bg-emerald-600 px-6 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
-            >
-              Create Your First Quotation
-            </Link>
+            <p className="text-slate-600">Loading quotations...</p>
+          </div>
+        ) : quotations.length === 0 ? (
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 md:p-16 text-center">
+            <div className="max-w-md mx-auto">
+              <svg
+                className="mx-auto h-16 w-16 text-slate-400 mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                No quotations found
+              </h3>
+              <p className="text-slate-600 mb-6">
+                Get started by creating your first quotation. You can add client details, job descriptions, and pricing information.
+              </p>
+              <Link
+                href="/admin/quotations/create"
+                className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-6 py-3 text-sm font-medium text-white hover:bg-emerald-700 transition shadow-sm hover:shadow-md"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Create Your First Quotation
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden">

@@ -3,10 +3,12 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { projectsAPI } from "@/lib/api";
 
 export default function CreateProjectPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [formData, setFormData] = useState({
     projectName: "",
     clientName: "",
@@ -29,23 +31,57 @@ export default function CreateProjectPage() {
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
+      setUploadingFiles(true);
       const newFiles = Array.from(e.target.files);
-      setFiles((prev) => [...prev, ...newFiles]);
       
-      // Create previews for images
+      // Validate file sizes (25MB max)
+      const validFiles: File[] = [];
+      const invalidFiles: string[] = [];
+      
       newFiles.forEach((file) => {
-        if (file.type.startsWith("image/")) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setFilePreviews((prev) => [...prev, reader.result as string]);
-          };
-          reader.readAsDataURL(file);
+        if (file.size > 25 * 1024 * 1024) {
+          invalidFiles.push(file.name);
         } else {
-          setFilePreviews((prev) => [...prev, ""]);
+          validFiles.push(file);
         }
       });
+      
+      if (invalidFiles.length > 0) {
+        alert(`The following files exceed 25MB and were not added:\n${invalidFiles.join('\n')}`);
+      }
+      
+      if (validFiles.length > 0) {
+        setFiles((prev) => [...prev, ...validFiles]);
+        
+        // Create previews for images and PDFs
+        const previewPromises = validFiles.map((file) => {
+          return new Promise<string>((resolve) => {
+            if (file.type.startsWith("image/")) {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                resolve(reader.result as string);
+              };
+              reader.onerror = () => resolve("");
+              reader.readAsDataURL(file);
+            } else if (file.type === "application/pdf") {
+              // For PDFs, we'll show a PDF icon
+              resolve("pdf");
+            } else {
+              // For other files, show a document icon
+              resolve("document");
+            }
+          });
+        });
+        
+        const previews = await Promise.all(previewPromises);
+        setFilePreviews((prev) => [...prev, ...previews]);
+      }
+      
+      setUploadingFiles(false);
+      // Reset the input so the same file can be selected again
+      e.target.value = '';
     }
   };
 
@@ -54,41 +90,49 @@ export default function CreateProjectPage() {
     setFilePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const convertFilesToBase64 = async (files: File[]): Promise<Array<{ name: string; data: string; type: string }>> => {
+    const filePromises = files.map((file) => {
+      return new Promise<{ name: string; data: string; type: string }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve({
+            name: file.name,
+            data: reader.result as string,
+            type: file.type,
+          });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    });
+    return Promise.all(filePromises);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const newProject = {
-      id: Date.now().toString(),
-      ...formData,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    const stored = typeof window !== "undefined" ? localStorage.getItem("projects") : null;
-    if (stored) {
-      try {
-        const projects = JSON.parse(stored);
-        projects.push(newProject);
-        if (typeof window !== "undefined") {
-          localStorage.setItem("projects", JSON.stringify(projects));
-        }
-      } catch (e) {
-        console.error("Error saving project:", e);
-        // If parsing fails, create new array
-        if (typeof window !== "undefined") {
-          localStorage.setItem("projects", JSON.stringify([newProject]));
-        }
+    try {
+      // Convert files to base64
+      let filesData = null;
+      if (files.length > 0) {
+        setUploadingFiles(true);
+        filesData = await convertFilesToBase64(files);
+        setUploadingFiles(false);
       }
-    } else {
-      // First project
-      if (typeof window !== "undefined") {
-        localStorage.setItem("projects", JSON.stringify([newProject]));
-      }
+      
+      const newProject = {
+        ...formData,
+        files: filesData,
+      };
+      await projectsAPI.create(newProject);
+      router.push("/admin/projects");
+    } catch (error) {
+      console.error("Error creating project:", error);
+      alert("Failed to create project. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-    router.push("/admin/projects");
   };
 
   return (
@@ -297,13 +341,20 @@ export default function CreateProjectPage() {
                   id="files"
                   name="files"
                   multiple
-                  accept="image/*,.pdf,.doc,.docx"
+                  accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx,.csv"
                   onChange={handleFileChange}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                  disabled={uploadingFiles}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  You can upload images, PDFs, or documents. Maximum file size: 10MB per file.
+                  You can upload images, PDFs, or documents. Maximum file size: 25MB per file.
                 </p>
+                {uploadingFiles && (
+                  <div className="mt-2 flex items-center gap-2 text-sm text-emerald-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600"></div>
+                    <span>Processing files...</span>
+                  </div>
+                )}
                 
                 {files.length > 0 && (
                   <div className="mt-4 space-y-2">
@@ -314,7 +365,7 @@ export default function CreateProjectPage() {
                           key={index}
                           className="relative border border-gray-200 rounded-lg p-2 bg-gray-50"
                         >
-                          {file.type.startsWith("image/") && filePreviews[index] ? (
+                          {file.type.startsWith("image/") && filePreviews[index] && filePreviews[index] !== "pdf" && filePreviews[index] !== "document" ? (
                             <div className="relative">
                               <img
                                 src={filePreviews[index]}

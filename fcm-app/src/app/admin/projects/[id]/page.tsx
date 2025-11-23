@@ -1,20 +1,22 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { projectsAPI } from "@/lib/api";
 
-type Blueprint = {
+type ProjectFile = {
   name: string;
-  href: string;
-  file?: File;
   url?: string;
+  data?: string; // base64 data
+  type?: string; // MIME type
 };
 
 type Phase = {
-  id: number;
+  id: string | number;
   name: string;
   isFinished: boolean;
+  orderIndex?: number;
 };
 
 type Project = {
@@ -30,44 +32,151 @@ type Project = {
   workArea?: number;
   createdAt: number;
   updatedAt: number;
+  lastEditedBy?: string;
+  files?: ProjectFile[];
+  tasks?: Phase[];
 };
 
 export default function AdminProjectPage() {
   const params = useParams<{ id: string }>();
-  const projectId = params?.id ?? "";
+  const searchParams = useSearchParams();
+  const projectId = params?.id ? decodeURIComponent(params.id) : "";
   const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [savingTasks, setSavingTasks] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !projectId) return;
+  // Load project function
+  const loadProject = useCallback(async () => {
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
 
-    const stored = localStorage.getItem("projects");
-    if (stored) {
+    setLoading(true);
+    setProject(null); // Clear previous project to force fresh load
+    
+    try {
+      console.log('Loading project with ID:', projectId);
+      
+      // First try API
+      const data = await projectsAPI.getById(projectId);
+      console.log('API returned project data:', data);
+      
+      if (data && (data.id || data.projectName)) {
+        console.log('Setting project from API:', data);
+        setProject(data);
+        setLoading(false);
+        return;
+      }
+      
+      // If API didn't return data, try localStorage
+      console.log('API returned no data, checking localStorage...');
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('projects');
+        if (stored) {
+          try {
+            const projects = JSON.parse(stored);
+            console.log('Projects in localStorage:', projects.length);
+            
+            // Try multiple ID matching strategies
+            const found = projects.find((p: any) => {
+              const pId = String(p.id || '').toLowerCase().trim();
+              const searchId = String(projectId || '').toLowerCase().trim();
+              return pId === searchId || pId.includes(searchId) || searchId.includes(pId);
+            });
+            
+            if (found) {
+              console.log('Found project in localStorage:', found);
+              setProject(found);
+              setLoading(false);
+              return;
+            } else {
+              console.log('Project not found in localStorage. Looking for ID:', projectId);
+              console.log('Available IDs:', projects.map((p: any) => p.id));
+            }
+          } catch (e) {
+            console.error('Error parsing localStorage:', e);
+          }
+        }
+      }
+      
+      // Last resort: try fetching all projects and finding by ID
+      console.log('Trying to fetch all projects and find by ID...');
       try {
-        const projects: Project[] = JSON.parse(stored);
-        const found = projects.find((p) => p.id === projectId);
+        const allProjects = await projectsAPI.getAll();
+        const found = allProjects.find((p: any) => {
+          const pId = String(p.id || '').toLowerCase().trim();
+          const searchId = String(projectId || '').toLowerCase().trim();
+          return pId === searchId;
+        });
         if (found) {
+          console.log('Found project in all projects list:', found);
           setProject(found);
+          setLoading(false);
+          return;
         }
       } catch (e) {
-        console.error("Error loading project:", e);
+        console.error('Error fetching all projects:', e);
       }
+      
+      console.log('Project not found anywhere');
+      setProject(null);
+    } catch (error) {
+      console.error('Error loading project:', error);
+      setProject(null);
+    } finally {
+      setLoading(false);
     }
   }, [projectId]);
 
-  const handleBack = () => {
-    if (typeof window !== "undefined") {
-      const referrer = document.referrer;
-      // Check if we came from an admin page and have history
-      if (referrer && referrer.includes("/admin") && window.history.length > 1) {
-        router.back();
-      } else {
-        // If not from admin page or no history, go to admin dashboard
-        router.push("/admin");
+  useEffect(() => {
+    loadProject();
+  }, [loadProject, searchParams]); // Reload when searchParams change (e.g., refresh query param)
+
+  // Also reload when the page becomes visible (user navigates back)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && projectId) {
+        console.log('Page became visible, reloading project...');
+        loadProject();
       }
-    } else {
-      router.push("/admin");
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadProject, projectId]);
+
+  const handleDelete = async () => {
+    if (!project) return;
+    
+    if (!confirm(`Are you sure you want to delete project "${project.projectName}"? This action cannot be undone.`)) {
+      return;
     }
+
+    setDeleting(true);
+    try {
+      const success = await projectsAPI.delete(projectId);
+      if (success) {
+        router.push("/admin/projects");
+      } else {
+        alert("Failed to delete project. Please try again.");
+        setDeleting(false);
+      }
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      alert("Failed to delete project. Please try again.");
+      setDeleting(false);
+    }
+  };
+
+  const handleBack = () => {
+    // Always go directly to projects list from project details
+    // This prevents loops and ensures consistent navigation
+    router.push("/admin/projects");
   };
 
   const projectName = project ? project.projectName : (projectId ? `Project #${projectId}` : "Project");
@@ -87,13 +196,9 @@ export default function AdminProjectPage() {
     }
   };
   const deadlineDate = project ? formatDeadline(project.deadlineDate) : "N/A";
-  const initialPhases: Phase[] = [
-    { id: 1, name: "Site Inspection", isFinished: true },
-    { id: 2, name: "Structural Works", isFinished: true },
-    { id: 3, name: "Interior Fit-out", isFinished: false },
-    { id: 4, name: "Final Punchlist", isFinished: false },
-  ];
-  const [phaseList, setPhaseList] = useState<Phase[]>(initialPhases);
+  
+  // Initialize tasks from project data or empty array
+  const [phaseList, setPhaseList] = useState<Phase[]>([]);
   const [newPhaseName, setNewPhaseName] = useState("");
   const progressRate = useMemo(() => {
     if (phaseList.length === 0) return 0;
@@ -101,72 +206,320 @@ export default function AdminProjectPage() {
     return Math.round((completed / phaseList.length) * 100);
   }, [phaseList]);
 
-  const togglePhase = (phaseId: number) => {
+  // Fetch tasks from API
+  const fetchTasks = useCallback(async () => {
+    if (!projectId) return;
+    
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks`);
+      if (response.ok) {
+        const tasks = await response.json();
+        setPhaseList(tasks || []);
+      }
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+      // Fallback to tasks from project data if API fails
+      if (project?.tasks) {
+        setPhaseList(project.tasks);
+      }
+    }
+  }, [projectId, project?.tasks]);
+
+  // Load tasks when projectId changes
+  useEffect(() => {
+    if (projectId) {
+      fetchTasks();
+    }
+  }, [projectId, fetchTasks]);
+
+  // Save single task to database
+  const saveTask = async (task: Phase) => {
+    if (!projectId || !task.id || !project) return;
+    
+    setSavingTasks(true);
+    try {
+      const username = typeof window !== 'undefined' 
+        ? (localStorage.getItem('admin-username') || 'Admin')
+        : 'Admin';
+      
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(task.id)}`,
+        {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-username': username,
+          },
+          body: JSON.stringify({
+            name: task.name,
+            isFinished: task.isFinished,
+            orderIndex: task.orderIndex || 0,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to save task');
+      }
+
+      const updatedTask = await response.json();
+      setPhaseList(prev =>
+        prev.map(p => p.id === task.id ? updatedTask : p)
+      );
+      
+      // Update project's last_edited_by and updatedAt in local state
+      setProject(prev => prev ? {
+        ...prev,
+        lastEditedBy: username,
+        updatedAt: Date.now(),
+      } : null);
+    } catch (error) {
+      console.error('Error saving task:', error);
+      alert('Failed to save task. Please try again.');
+    } finally {
+      setSavingTasks(false);
+    }
+  };
+
+  const togglePhase = async (phaseId: string | number) => {
+    const phase = phaseList.find(p => p.id === phaseId);
+    if (!phase) return;
+
+    const updated = {
+      ...phase,
+      isFinished: !phase.isFinished,
+    };
+    
+    // Optimistically update UI
     setPhaseList(prev =>
-      prev.map(phase =>
-        phase.id === phaseId
-          ? { ...phase, isFinished: !phase.isFinished }
-          : phase
-      )
+      prev.map(p => p.id === phaseId ? updated : p)
     );
+    
+    // Save to database (this will also update project's last_edited_by and updatedAt in local state)
+    await saveTask(updated);
   };
 
-  const addPhase = () => {
+  const addPhase = async () => {
     const name = newPhaseName.trim();
-    if (!name) return;
-    setPhaseList(prev => [
-      ...prev,
-      {
-        id: prev.length ? Math.max(...prev.map(p => p.id)) + 1 : 1,
-        name,
-        isFinished: false,
-      },
-    ]);
-    setNewPhaseName("");
+    if (!name || !projectId) return;
+    
+    setSavingTasks(true);
+    try {
+      const username = typeof window !== 'undefined' 
+        ? (localStorage.getItem('admin-username') || 'Admin')
+        : 'Admin';
+      
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/tasks`,
+        {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-username': username,
+          },
+          body: JSON.stringify({ name }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to create task');
+      }
+
+      const newTask = await response.json();
+      setPhaseList(prev => [...prev, newTask]);
+      setNewPhaseName("");
+      
+      // Update project's last_edited_by and updatedAt in local state
+      setProject(prev => prev ? {
+        ...prev,
+        lastEditedBy: username,
+        updatedAt: Date.now(),
+      } : null);
+    } catch (error) {
+      console.error('Error creating task:', error);
+      alert('Failed to create task. Please try again.');
+    } finally {
+      setSavingTasks(false);
+    }
   };
 
-  const removePhase = (phaseId: number) => {
-    setPhaseList(prev => prev.filter(phase => phase.id !== phaseId));
+  const removePhase = async (phaseId: string | number) => {
+    if (!projectId) return;
+    
+    setSavingTasks(true);
+    try {
+      const username = typeof window !== 'undefined' 
+        ? (localStorage.getItem('admin-username') || 'Admin')
+        : 'Admin';
+      
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(phaseId)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'x-username': username,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete task');
+      }
+
+      setPhaseList(prev => prev.filter(phase => phase.id !== phaseId));
+      
+      // Update project's last_edited_by and updatedAt in local state
+      setProject(prev => prev ? {
+        ...prev,
+        lastEditedBy: username,
+        updatedAt: Date.now(),
+      } : null);
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      alert('Failed to delete task. Please try again.');
+    } finally {
+      setSavingTasks(false);
+    }
   };
 
-  const handleDownloadBlueprint = (blueprint: Blueprint) => {
-    if (blueprint.file) {
-      // If we have a File object, create a download link
-      const url = URL.createObjectURL(blueprint.file);
+  const truncateFileName = (fileName: string, maxLength: number = 35): string => {
+    if (!fileName) return '';
+    if (fileName.length <= maxLength) return fileName;
+    
+    // Get file extension
+    const lastDot = fileName.lastIndexOf('.');
+    if (lastDot === -1) {
+      // No extension, just truncate
+      return fileName.substring(0, maxLength - 3) + '...';
+    }
+    
+    const name = fileName.substring(0, lastDot);
+    const extension = fileName.substring(lastDot);
+    const maxNameLength = maxLength - extension.length - 3; // 3 for "..."
+    
+    if (name.length <= maxNameLength) return fileName;
+    return name.substring(0, maxNameLength) + '...' + extension;
+  };
+
+  const handleDownloadFile = (file: ProjectFile) => {
+    if (file.data) {
+      // If we have base64 data, convert and download
+      const byteCharacters = atob(file.data.split(',')[1] || file.data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: file.type || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = blueprint.name;
+      link.download = file.name;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } else if (blueprint.url) {
+    } else if (file.url) {
       // If we have a URL, download from that URL
       const link = document.createElement('a');
-      link.href = blueprint.url;
-      link.download = blueprint.name;
+      link.href = file.url;
+      link.download = file.name;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else {
-      // Fallback: try to download from href if it's a valid URL
-      if (blueprint.href && blueprint.href !== '#') {
-        window.open(blueprint.href, '_blank');
-      }
     }
   };
 
-  const blueprints: Blueprint[] = [
-    { name: "Floorplan.pdf", href: "#" },
-    { name: "Elevations.dwg", href: "#" },
-  ];
+  // Get files from project data
+  const projectFiles: ProjectFile[] = project?.files || [];
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-100">
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+              <p className="text-slate-600 text-lg">Loading project details...</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   if (!project) {
     return (
       <main className="min-h-screen bg-slate-100">
         <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
-          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 text-center">
-            <p className="text-slate-600 mb-4">Loading project...</p>
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 md:p-16 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="mb-6">
+                <svg
+                  className="mx-auto h-20 w-20 text-slate-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-semibold text-slate-900 mb-3">
+                Project Not Found
+              </h3>
+              <p className="text-slate-600 mb-2">
+                The project you're looking for doesn't exist or may have been deleted.
+              </p>
+              <p className="text-sm text-slate-500 mb-8">
+                Project ID: <span className="font-mono bg-slate-100 px-2 py-1 rounded">{projectId}</span>
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={handleBack}
+                  className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-6 py-3 text-sm font-medium text-white hover:bg-emerald-700 transition shadow-sm hover:shadow-md"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                    />
+                  </svg>
+                  Back to Projects
+                </button>
+                <Link
+                  href="/admin/projects/create"
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-6 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Create New Project
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </main>
@@ -176,12 +529,12 @@ export default function AdminProjectPage() {
   return (
     <main className="min-h-screen bg-slate-100">
        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={handleBack}
-              className="rounded-md border-2 border-slate-400 bg-white p-2.5 text-slate-800 hover:bg-slate-50 hover:border-slate-500 transition flex items-center justify-center shadow-sm"
+              className="rounded-lg border-2 border-slate-300 bg-white p-2.5 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition flex items-center justify-center shadow-sm hover:shadow"
               aria-label="Go back"
             >
               <svg
@@ -197,57 +550,39 @@ export default function AdminProjectPage() {
             </button>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
-                Project Overview
+                {project.projectName}
               </h1>
-              <p className="text-sm text-slate-600">
-                Detailed view for project{" "}
-                <span className="font-semibold">{projectId || "#"}</span>
+              <p className="text-sm text-slate-600 mt-1">
+                Project details and progress tracking
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <Link
-              href={`/admin/projects/${projectId}/edit`}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
+              href={`/admin/projects/${encodeURIComponent(projectId)}/edit`}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition shadow-sm hover:shadow-md"
             >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
               Edit Project
             </Link>
+            <button 
+              onClick={handleDelete} 
+              disabled={deleting || loading}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left column (sidebar) */}
-          <aside className="lg:col-span-3">
-            <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 flex flex-col gap-3 sticky top-6">
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                <div className="h-10 w-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-lg font-bold">
-                  F
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
-                    FCM Dashboard
-                  </p>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Admin Panel
-                  </p>
-                </div>
-              </div>
-              <nav className="flex flex-col gap-1 text-sm">
-                <Link
-                  href="/admin"
-                  className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
-                >
-                  Admin Home
-                </Link>
-                <span className="rounded-lg px-3 py-2 bg-emerald-50 text-emerald-700 font-medium">
-                  This Project
-                </span>
-              </nav>
-            </div>
-          </aside>
-
           {/* Center column: header + project tasks */}
-          <section className="lg:col-span-6 space-y-4">
+          <section className="lg:col-span-9 space-y-4">
             <div className="relative rounded-2xl overflow-hidden bg-cover bg-center shadow-sm h-44 md:h-56" style={{ backgroundImage: "url('/images/main1.png')" }}>
               <div className="absolute inset-0 bg-black/50" />
               <div className="relative z-10 px-6 py-4 md:px-8 md:py-6 h-full flex items-center">
@@ -279,19 +614,32 @@ export default function AdminProjectPage() {
                     type="text"
                     value={newPhaseName}
                     onChange={(e) => setNewPhaseName(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        addPhase();
+                      }
+                    }}
                     placeholder="New task name"
                     className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    disabled={savingTasks}
                   />
                   <button
                     type="button"
                     onClick={addPhase}
-                    className="inline-flex items-center justify-center rounded-full bg-emerald-600 text-white h-10 w-10 text-2xl"
+                    disabled={savingTasks || !newPhaseName.trim()}
+                    className="inline-flex items-center justify-center rounded-full bg-emerald-600 text-white h-10 w-10 text-2xl disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700 transition"
                     aria-label="Add phase"
                   >
                     +
                   </button>
                 </div>
-                <div className="flex items-center">
+                <div className="flex items-center gap-2">
+                  {savingTasks && (
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600"></div>
+                      <span>Saving...</span>
+                    </div>
+                  )}
                   <div className="bg-emerald-600 text-white rounded-xl px-4 py-2 flex items-center gap-2">
                     <span className="text-sm font-medium">Progress:</span>
                     <span className="text-lg font-semibold">
@@ -319,9 +667,16 @@ export default function AdminProjectPage() {
                         type="checkbox"
                         checked={phase.isFinished}
                         onChange={() => togglePhase(phase.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                        disabled={savingTasks}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
-                      <span className="text-sm text-slate-800 break-words">
+                      <span 
+                        className={`text-sm break-words ${
+                          phase.isFinished 
+                            ? "line-through text-slate-400" 
+                            : "text-slate-800"
+                        }`}
+                      >
                         {phase.name}
                       </span>
                     </div>
@@ -335,7 +690,8 @@ export default function AdminProjectPage() {
                     <button
                       type="button"
                       onClick={() => removePhase(phase.id)}
-                      className="inline-flex items-center justify-center rounded-full p-2 text-red-500 hover:text-white hover:bg-red-500 transition"
+                      disabled={savingTasks}
+                      className="inline-flex items-center justify-center rounded-full p-2 text-red-500 hover:text-white hover:bg-red-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       aria-label="Delete task"
                     >
                       <svg
@@ -353,7 +709,7 @@ export default function AdminProjectPage() {
             </div>
           </section>
 
-          {/* Right column: project details / blueprints / deadline */}
+          {/* Right column: project details / files / deadline */}
           <aside className="lg:col-span-3">
             <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5 md:p-6 space-y-4 sticky top-6">
               <h2 className="text-lg md:text-xl font-semibold text-emerald-700 text-center">
@@ -394,7 +750,7 @@ export default function AdminProjectPage() {
                 <div className="flex">
                   <dt className="w-32 text-slate-500">Project Cost:</dt>
                   <dd className="flex-1 font-medium text-slate-900">
-                    {projectCost}
+                    {projectCost && projectCost !== "N/A" ? `Php ${projectCost}` : "N/A"}
                   </dd>
                 </div>
                 <div className="flex flex-col">
@@ -407,16 +763,17 @@ export default function AdminProjectPage() {
 
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 mb-2">
-                  Blueprints
+                  Files
                 </h3>
-                {blueprints.length > 0 ? (
+                {projectFiles.length > 0 ? (
                   <ul className="space-y-1 text-sm break-words">
-                    {blueprints.map((bp) => (
-                      <li key={bp.name}>
+                    {projectFiles.map((file, index) => (
+                      <li key={file.name || index}>
                         <button
                           type="button"
-                          onClick={() => handleDownloadBlueprint(bp)}
-                          className="text-emerald-700 hover:text-emerald-800 hover:underline break-words flex items-center gap-1 cursor-pointer"
+                          onClick={() => handleDownloadFile(file)}
+                          className="text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer w-full text-left"
+                          title={file.name} // Show full name on hover
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -424,18 +781,18 @@ export default function AdminProjectPage() {
                             viewBox="0 0 24 24"
                             strokeWidth={1.5}
                             stroke="currentColor"
-                            className="w-4 h-4"
+                            className="w-4 h-4 flex-shrink-0"
                           >
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                           </svg>
-                          {bp.name}
+                          <span className="truncate">{truncateFileName(file.name)}</span>
                         </button>
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <p className="text-sm text-slate-500">
-                    No blueprints attached.
+                    No files attached.
                   </p>
                 )}
               </div>
@@ -446,6 +803,43 @@ export default function AdminProjectPage() {
                 </h3>
                 <p className="text-sm text-slate-800">{deadlineDate}</p>
               </div>
+
+              {project.createdAt && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 mb-1">
+                    Created
+                  </h3>
+                  <p className="text-sm text-slate-800">
+                    {new Date(project.createdAt).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+              )}
+
+              {project.updatedAt && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 mb-1">
+                    Last Edited
+                  </h3>
+                  <p className="text-sm text-slate-800">
+                    {new Date(project.updatedAt).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    by {project.lastEditedBy || 'Admin'}
+                  </p>
+                </div>
+              )}
             </div>
           </aside>
         </div>

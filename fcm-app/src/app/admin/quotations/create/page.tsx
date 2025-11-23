@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
+import { quotationsAPI } from "@/lib/api";
+import { formatCurrency, calculateTotalFromItems, formatDateForPDF } from "@/lib/utils";
 
 type QuotationItem = {
   description: string;
@@ -24,42 +26,30 @@ type QuotationData = {
   items?: QuotationItem[];
 };
 
-const getNextQuotationNumber = (): string => {
-  if (typeof window === "undefined") return "300.42";
-
-  const stored = localStorage.getItem("quotations");
-  if (!stored) return "300.42";
-
+const getNextQuotationNumber = async (): Promise<string> => {
   try {
-    const quotations = JSON.parse(stored);
-    if (quotations.length === 0) return "300.42";
+    const quotations = await quotationsAPI.getAll();
+    if (quotations.length === 0) return "1";
 
     let maxNumber = 0;
     quotations.forEach((q: any) => {
+      // Extract numeric value from quotation number (handle formats like "1", "2", "300.42", etc.)
       const numStr = (q.quotationNumber || "").toString().replace(/[^0-9.]/g, "");
       if (numStr.includes(".")) {
-        const [wholeStr, decimalStr] = numStr.split(".");
-        const whole = parseInt(wholeStr) || 0;
-        const decimal = parseInt(decimalStr) || 0;
-        const num = whole + decimal / 100;
-        if (num > maxNumber) maxNumber = num;
+        // If it has a decimal, use the whole number part
+        const whole = parseInt(numStr.split(".")[0]) || 0;
+        if (whole > maxNumber) maxNumber = whole;
       } else {
-        const num = parseFloat(numStr) || 0;
+        // If it's a whole number, use it directly
+        const num = parseInt(numStr) || 0;
         if (num > maxNumber) maxNumber = num;
       }
     });
 
-    if (maxNumber === 0) return "300.42";
-
-    const nextNumber = maxNumber + 0.01;
-    const whole = Math.floor(nextNumber);
-    const decimal = Math.round((nextNumber - whole) * 100);
-
-    if (decimal === 0) return `${whole}.00`;
-    if (decimal < 10) return `${whole}.0${decimal}`;
-    return `${whole}.${decimal}`;
+    // Increment by 1
+    return (maxNumber + 1).toString();
   } catch {
-    return "300.42";
+    return "1";
   }
 };
 
@@ -89,24 +79,47 @@ export default function CreateQuotationPage() {
   });
 
   useEffect(() => {
-    const next = getNextQuotationNumber();
-    setFormData((p) => ({ ...p, quotationNumber: next }));
+    async function initializeForm() {
+      const next = await getNextQuotationNumber();
+      const today = new Date();
+      const valid = new Date(today);
+      valid.setDate(valid.getDate() + 30);
 
-    const today = new Date();
-    const valid = new Date(today);
-    valid.setDate(valid.getDate() + 30);
-
-    setFormData((p) => ({
-      ...p,
-      validUntil: valid.toISOString().split("T")[0],
-    }));
+      setFormData((p) => {
+        const initialItems = p.items || [{ description: "", price: "" }];
+        const initialTotal = calculateTotalFromItems(initialItems);
+        return {
+          ...p,
+          quotationNumber: next,
+          validUntil: valid.toISOString().split("T")[0],
+          totalDue: initialTotal,
+        };
+      });
+    }
+    initializeForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData((p) => ({
-      ...p,
-      [e.target.name]: e.target.value,
-    }));
+    const name = e.target.name;
+    const value = e.target.value;
+    
+    setFormData((p) => {
+      const updated = {
+        ...p,
+        [name]: value,
+      };
+      
+      // If date is changed, automatically set validUntil to one month later
+      if (name === "date" && value) {
+        const date = new Date(value);
+        const validUntil = new Date(date);
+        validUntil.setMonth(validUntil.getMonth() + 1);
+        updated.validUntil = validUntil.toISOString().split("T")[0];
+      }
+      
+      return updated;
+    });
   };
 
   const handleTermChange = (index: number, value: string) => {
@@ -121,38 +134,29 @@ export default function CreateQuotationPage() {
       updated[index] = { description: "", price: "" };
     }
     updated[index] = { ...updated[index], [field]: value };
-    setFormData((p) => ({ ...p, items: updated }));
+    
+    // Calculate total from all items
+    const total = calculateTotalFromItems(updated);
+    
+    setFormData((p) => ({ ...p, items: updated, totalDue: total }));
   };
-
+  
   const addItem = () => {
+    const newItems = [...(formData.items || []), { description: "", price: "" }];
+    const total = calculateTotalFromItems(newItems);
     setFormData((p) => ({
       ...p,
-      items: [...(p.items || []), { description: "", price: "" }],
+      items: newItems,
+      totalDue: total,
     }));
   };
 
   const removeItem = (index: number) => {
     const updated = [...(formData.items || [])];
     updated.splice(index, 1);
-    setFormData((p) => ({ ...p, items: updated.length > 0 ? updated : [{ description: "", price: "" }] }));
-  };
-
-  const formatCurrency = (amount: string) => {
-    const num = parseFloat((amount || "").toString().replace(/[^0-9.]/g, ""));
-    if (isNaN(num)) return amount;
-    return `Php ${num.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
-
-  const formatDate = (v: string) => {
-    try {
-      const d = new Date(v);
-      return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${String(d.getFullYear()).slice(-2)}`;
-    } catch {
-      return v;
-    }
+    const finalItems = updated.length > 0 ? updated : [{ description: "", price: "" }];
+    const total = calculateTotalFromItems(finalItems);
+    setFormData((p) => ({ ...p, items: finalItems, totalDue: total }));
   };
 
   // ============================================================
@@ -203,10 +207,10 @@ export default function CreateQuotationPage() {
 
     // DATE + NUMBER
     doc.setFontSize(11);
-    doc.text(`DATE: ${formatDate(formData.date)}`, margin, y);
+    doc.text(`DATE: ${formatDateForPDF(formData.date)}`, margin, y);
     doc.text(`#${formData.quotationNumber}`, pw - margin, y, { align: "right" });
     y += 5;
-    doc.text(`Valid Until: ${formatDate(formData.validUntil)}`, margin, y);
+    doc.text(`Valid Until: ${formatDateForPDF(formData.validUntil)}`, margin, y);
     y += 8; // Reduced spacing
 
     // CLIENT INFO HEADER - More compact
@@ -399,23 +403,29 @@ export default function CreateQuotationPage() {
     e.preventDefault();
     setLoading(true);
 
-    const id = `q-${Date.now()}`;
-    const record = {
-      id,
-      ...formData,
-      createdAt: Date.now(),
-    };
-
-    const saved = localStorage.getItem("quotations");
-    const arr = saved ? JSON.parse(saved) : [];
-    arr.push(record);
-    localStorage.setItem("quotations", JSON.stringify(arr));
-
-    await generatePDF();
-
-    setTimeout(() => {
+    try {
+      // Filter out empty items before saving
+      const itemsToSave = (formData.items || []).filter(item => item && (item.description || item.price));
+      
+      // Get current user from localStorage (default to "Admin")
+      const currentUser = typeof window !== 'undefined' 
+        ? (localStorage.getItem('admin-username') || 'Admin')
+        : 'Admin';
+      
+      const dataToSave = {
+        ...formData,
+        items: itemsToSave.length > 0 ? itemsToSave : null,
+        createdBy: currentUser,
+      };
+      
+      await quotationsAPI.create(dataToSave);
       router.push("/admin/quotations");
-    }, 400);
+    } catch (error) {
+      console.error("Error creating quotation:", error);
+      alert("Failed to create quotation. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -439,8 +449,20 @@ export default function CreateQuotationPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label htmlFor="quotationNumber" className="block text-sm font-semibold text-gray-700 mb-2">Quotation Number *</label>
-                <input type="text" id="quotationNumber" name="quotationNumber" value={formData.quotationNumber} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., 300.42" />
+                <label htmlFor="quotationNumber" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Quotation Number * 
+                  <span className="text-xs font-normal text-gray-500 ml-1">(Auto-generated from last quotation)</span>
+                </label>
+                <input 
+                  type="text" 
+                  id="quotationNumber" 
+                  name="quotationNumber" 
+                  value={formData.quotationNumber} 
+                  onChange={handleChange} 
+                  required 
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 bg-emerald-50/30" 
+                  placeholder="Auto-generated"
+                />
               </div>
 
               <div>
@@ -454,8 +476,21 @@ export default function CreateQuotationPage() {
               </div>
 
               <div>
-                <label htmlFor="totalDue" className="block text-sm font-semibold text-gray-700 mb-2">Total Due *</label>
-                <input type="text" id="totalDue" name="totalDue" value={formData.totalDue} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Php 26,000.00" />
+                <label htmlFor="totalDue" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Total Due * 
+                  <span className="text-xs font-normal text-gray-500 ml-1">(Auto-calculated from items)</span>
+                </label>
+                <input 
+                  type="text" 
+                  id="totalDue" 
+                  name="totalDue" 
+                  value={formData.totalDue} 
+                  onChange={handleChange} 
+                  required 
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400 bg-emerald-50/30 cursor-not-allowed" 
+                  placeholder="e.g., Php 26,000.00"
+                  readOnly
+                />
               </div>
             </div>
 
@@ -550,7 +585,7 @@ export default function CreateQuotationPage() {
 
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
               <Link href="/admin/quotations" className="rounded-md border border-slate-300 px-6 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition">Cancel</Link>
-              <button type="submit" disabled={loading} className="rounded-md bg-emerald-600 px-6 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition disabled:opacity-60 disabled:cursor-not-allowed">{loading ? "Creating..." : "Create & Download PDF"}</button>
+              <button type="submit" disabled={loading} className="rounded-md bg-emerald-600 px-6 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition disabled:opacity-60 disabled:cursor-not-allowed">{loading ? "Saving..." : "Save Quotation"}</button>
             </div>
           </form>
         </div>

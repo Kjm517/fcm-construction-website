@@ -1,14 +1,27 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load remembered username on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const rememberedUsername = localStorage.getItem('remembered-username');
+      if (rememberedUsername) {
+        setUsername(rememberedUsername);
+        setRememberMe(true);
+      }
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,18 +32,42 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
 
-    if (username === "admin" && password === "123") {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("admin-auth", "true");
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("admin-auth", "true");
+          localStorage.setItem("admin-username", data.user.username);
+          localStorage.setItem("admin-user-id", data.user.id);
+          
+          // Handle "Remember Me"
+          if (rememberMe) {
+            localStorage.setItem("remembered-username", username);
+          } else {
+            localStorage.removeItem("remembered-username");
+          }
+        }
+        router.push("/admin");
+        return;
       }
-      router.push("/admin");
-      return;
-    }
 
-    setError("Invalid username or password");
-    setLoading(false);
+      setError(data.error || "Invalid username or password");
+    } catch (err) {
+      console.error('Login error:', err);
+      setError("An error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -98,13 +135,15 @@ export default function LoginPage() {
               <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
                 <input
                   type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span>Remember me</span>
               </label>
-              <a href="#" className="text-emerald-600 hover:text-emerald-700 hover:underline font-medium">
+              <Link href="/admin/forgot-password" className="text-emerald-600 hover:text-emerald-700 hover:underline font-medium">
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
             <div className="flex justify-center pt-2">
@@ -118,11 +157,6 @@ export default function LoginPage() {
             </div>
           </form>
 
-          <div className="mt-6 text-center text-xs text-slate-500 border-t border-slate-200 pt-6">
-            <p>
-              Demo credentials: <strong className="text-slate-700">admin</strong> / <strong className="text-slate-700">123</strong>
-            </p>
-          </div>
         </div>
       </div>
     </main>

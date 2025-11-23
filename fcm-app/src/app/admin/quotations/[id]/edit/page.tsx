@@ -4,6 +4,9 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import jsPDF from "jspdf";
+import { quotationsAPI } from "@/lib/api";
+import { formatCurrency, calculateTotalFromItems, formatDateForPDF } from "@/lib/utils";
+import { getCurrentUserDisplayName } from "@/lib/auth";
 
 type QuotationItem = {
   description: string;
@@ -38,6 +41,8 @@ type Quotation = {
   terms?: string[];
   items?: QuotationItem[];
   createdAt: number;
+  updatedAt?: number;
+  lastEditedBy?: string;
 };
 
 export default function EditQuotationPage() {
@@ -68,15 +73,25 @@ export default function EditQuotationPage() {
   });
 
   useEffect(() => {
-    if (typeof window === "undefined" || !quotationId) return;
+    if (!quotationId) return;
 
-    const stored = localStorage.getItem("quotations");
-    if (stored) {
+    async function loadQuotation() {
       try {
-        const quotations: Quotation[] = JSON.parse(stored);
-        const found = quotations.find((q) => q.id === quotationId);
+        const found = await quotationsAPI.getById(quotationId);
         if (found) {
           setQuotation(found);
+          
+          const items = found.items && Array.isArray(found.items) && found.items.length > 0 
+            ? found.items
+            : [
+                { description: "", price: "" },
+              ];
+          
+          // Calculate total from items if they have prices, otherwise use saved totalDue
+          const calculatedTotal = items.some(item => item && item.price && item.price.toString().trim() !== "") 
+            ? calculateTotalFromItems(items)
+            : found.totalDue || "Php 0.00";
+          
           setFormData({
             quotationNumber: found.quotationNumber,
             date: found.date,
@@ -85,23 +100,22 @@ export default function EditQuotationPage() {
             jobDescription: found.jobDescription,
             clientContact: found.clientContact || "",
             installationAddress: found.installationAddress,
-            attention: found.attention,
-            totalDue: found.totalDue,
+            attention: found.attention || "",
+            totalDue: calculatedTotal,
             terms: found.terms || [
               "Customers will be billed after 30 days upon completion and turnover of work with 7 days warranty",
               "Please email the signed price quote to the address above.",
               "Any additional work shall be created with a new quotation.",
               "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM trading and services will not be included in this quotation.",
             ],
-            items: found.items && found.items.length > 0 ? found.items : [
-              { description: "", price: "" },
-            ],
+            items: items,
           });
         }
       } catch (e) {
         console.error("Error loading quotation:", e);
       }
     }
+    loadQuotation();
   }, [quotationId]);
 
   const handleChange = (
@@ -119,45 +133,38 @@ export default function EditQuotationPage() {
     });
   };
 
+
   const handleItemChange = (index: number, field: "description" | "price", value: string) => {
     const updated = [...(formData.items || [])];
     if (!updated[index]) {
       updated[index] = { description: "", price: "" };
     }
     updated[index] = { ...updated[index], [field]: value };
-    setFormData((prev) => ({ ...prev, items: updated }));
+    
+    // Calculate total from all items
+    const total = calculateTotalFromItems(updated);
+    
+    setFormData((prev) => ({ ...prev, items: updated, totalDue: total }));
   };
 
   const addItem = () => {
+    const newItems = [...(formData.items || []), { description: "", price: "" }];
+    const total = calculateTotalFromItems(newItems);
     setFormData((prev) => ({
       ...prev,
-      items: [...(prev.items || []), { description: "", price: "" }],
+      items: newItems,
+      totalDue: total,
     }));
   };
 
   const removeItem = (index: number) => {
     const updated = [...(formData.items || [])];
     updated.splice(index, 1);
-    setFormData((prev) => ({ ...prev, items: updated.length > 0 ? updated : [{ description: "", price: "" }] }));
+    const finalItems = updated.length > 0 ? updated : [{ description: "", price: "" }];
+    const total = calculateTotalFromItems(finalItems);
+    setFormData((prev) => ({ ...prev, items: finalItems, totalDue: total }));
   };
 
-  const formatCurrency = (amount: string): string => {
-    const num = parseFloat(amount.replace(/[^0-9.]/g, ""));
-    if (isNaN(num)) return amount;
-    return `Php ${num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const formatDateForPDF = (dateString: string): string => {
-    try {
-      const date = new Date(dateString);
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const year = String(date.getFullYear()).slice(-2);
-      return `${month}/${day}/${year}`;
-    } catch {
-      return dateString;
-    }
-  };
 
   // ============================================================
   // OPTIMIZED PDF GENERATION - More compact layout
@@ -418,30 +425,27 @@ export default function EditQuotationPage() {
 
     setLoading(true);
 
-    const updatedQuotation = {
-      ...quotation,
-      ...formData,
-    };
-
-    const stored = typeof window !== "undefined" ? localStorage.getItem("quotations") : null;
-    if (stored) {
-      try {
-        const quotations: Quotation[] = JSON.parse(stored);
-        const index = quotations.findIndex((q) => q.id === quotationId);
-        if (index !== -1) {
-          quotations[index] = updatedQuotation;
-          if (typeof window !== "undefined") {
-            localStorage.setItem("quotations", JSON.stringify(quotations));
-          }
-        }
-      } catch (e) {
-        console.error("Error updating quotation:", e);
-      }
-    }
-
-    setTimeout(() => {
+    try {
+      // Filter out empty items before saving
+      const itemsToSave = (formData.items || []).filter(item => item && (item.description || item.price));
+      
+      // Get current user display name
+      const currentUser = await getCurrentUserDisplayName();
+      
+      const dataToSave = {
+        ...formData,
+        items: itemsToSave.length > 0 ? itemsToSave : null,
+        lastEditedBy: currentUser,
+      };
+      
+      await quotationsAPI.update(quotationId, dataToSave);
       router.push(`/admin/quotations/${quotationId}`);
-    }, 500);
+    } catch (error) {
+      console.error("Error updating quotation:", error);
+      alert("Failed to update quotation. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!quotation) {
@@ -535,7 +539,8 @@ export default function EditQuotationPage() {
 
               <div>
                 <label htmlFor="totalDue" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Total Due *
+                  Total Due * 
+                  <span className="text-xs font-normal text-gray-500 ml-1">(Auto-calculated from items)</span>
                 </label>
                 <input
                   type="text"
@@ -544,8 +549,9 @@ export default function EditQuotationPage() {
                   value={formData.totalDue}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400 bg-emerald-50/30 cursor-not-allowed"
                   placeholder="e.g., Php 26,000.00"
+                  readOnly
                 />
               </div>
             </div>
@@ -581,6 +587,22 @@ export default function EditQuotationPage() {
                     onChange={handleChange}
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
                     placeholder="e.g., +63 912 345 6789"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label htmlFor="jobDescription" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Job Description *
+                  </label>
+                  <input
+                    type="text"
+                    id="jobDescription"
+                    name="jobDescription"
+                    value={formData.jobDescription}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
+                    placeholder="e.g., Repairing back wall using hardiflex, wall angle and repainting"
                   />
                 </div>
 

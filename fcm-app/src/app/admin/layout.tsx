@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -9,12 +9,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
-  const resetInactivityTimer = () => {
+  const resetInactivityTimer = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    if (pathname === "/admin/login") {
+    // Public auth pages that don't require authentication
+    const publicAuthPages = ["/admin/login", "/admin/forgot-password"];
+    if (publicAuthPages.includes(pathname)) {
       return;
     }
 
@@ -31,10 +33,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       localStorage.removeItem("admin-auth");
       router.replace("/admin/login");
     }, INACTIVITY_TIMEOUT);
-  };
+  }, [pathname, router]);
 
   useEffect(() => {
-    if (pathname === "/admin/login") {
+    // Public auth pages that don't require authentication
+    const publicAuthPages = ["/admin/login", "/admin/forgot-password"];
+    if (publicAuthPages.includes(pathname)) {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
@@ -52,12 +56,35 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       return;
     }
 
+    // Initialize the timer
     resetInactivityTimer();
 
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    // Listen for user activity events
+    const events = [
+      'mousedown',
+      'mousemove',
+      'keypress',
+      'keydown',
+      'scroll',
+      'touchstart',
+      'click',
+      'focus',
+      'visibilitychange'
+    ];
     
+    // Handle visibility change (tab switching)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        resetInactivityTimer();
+      }
+    };
+
     events.forEach((event) => {
-      window.addEventListener(event, resetInactivityTimer, true);
+      if (event === 'visibilitychange') {
+        document.addEventListener(event, handleVisibilityChange);
+      } else {
+        window.addEventListener(event, resetInactivityTimer, true);
+      }
     });
 
     return () => {
@@ -65,10 +92,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         clearTimeout(timeoutRef.current);
       }
       events.forEach((event) => {
-        window.removeEventListener(event, resetInactivityTimer, true);
+        if (event === 'visibilitychange') {
+          document.removeEventListener(event, handleVisibilityChange);
+        } else {
+          window.removeEventListener(event, resetInactivityTimer, true);
+        }
       });
     };
-  }, [pathname, router]);
+  }, [pathname, router, resetInactivityTimer]);
 
   return <div className="min-h-screen bg-slate-50">{children}</div>;
 }

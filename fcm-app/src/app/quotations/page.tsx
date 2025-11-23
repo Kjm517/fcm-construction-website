@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import NavigationBar from '@/components/NavigationBar';
 
 export default function Quotations() {
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
   const [errors, setErrors] = useState({
     email: '',
     phone: ''
@@ -47,12 +50,19 @@ export default function Quotations() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     const formData = new FormData(e.currentTarget);
+    const name = formData.get('name') as string;
     const email = formData.get('email') as string;
     const phone = formData.get('phone') as string;
+    const projectType = formData.get('projectType') as string;
+    const location = formData.get('location') as string;
+    const budget = formData.get('budget') as string;
+    const details = formData.get('details') as string;
 
     const emailError = validateEmail(email);
     const phoneError = validatePhone(phone);
@@ -66,8 +76,37 @@ export default function Quotations() {
       return;
     }
 
-    console.log('Form submitted successfully!');
-    alert('Quote request submitted successfully!');
+    setSubmitting(true);
+
+    try {
+      const response = await fetch('/api/quote-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fullName: name,
+          email: email,
+          phoneNumber: phone,
+          projectType: projectType,
+          projectLocation: location,
+          estimatedBudget: budget || null,
+          projectDetails: details,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to submit quote request');
+      }
+
+      // Redirect to success page
+      router.push('/quotations/success');
+    } catch (error: any) {
+      console.error('Error submitting quote request:', error);
+      alert('Failed to submit quote request. Please try again.');
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -84,7 +123,7 @@ export default function Quotations() {
               Fill out the form below and we'll get back to you within 24 hours
             </p>
 
-            <form className="space-y-6" onSubmit={handleSubmit}>
+            <form ref={formRef} className="space-y-6" onSubmit={handleSubmit}>
               <div>
                 <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
                   Full Name *
@@ -241,9 +280,17 @@ export default function Quotations() {
               <div className="pt-4">
                 <button
                   type="submit"
-                  className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 transition shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+                  disabled={submitting}
+                  className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 transition shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
                 >
-                  Submit Request
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Submitting...
+                    </>
+                  ) : (
+                    'Submit Request'
+                  )}
                 </button>
               </div>
             </form>

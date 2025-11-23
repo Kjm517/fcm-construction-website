@@ -3,8 +3,10 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import jsPDF from "jspdf";
+import { quotationsAPI } from "@/lib/api";
+import { formatCurrency, calculateTotalFromItems, formatDateForPDF, formatDate } from "@/lib/utils";
 
 type QuotationItem = {
   description: string;
@@ -25,75 +27,161 @@ type Quotation = {
   terms?: string[];
   items?: QuotationItem[];
   createdAt: number;
+  updatedAt?: number;
+  lastEditedBy?: string;
+  createdBy?: string;
 };
 
 export default function ViewQuotationPage() {
   const params = useParams<{ id: string }>();
-  const quotationId = params?.id ?? "";
+  const router = useRouter();
+  const quotationId = params?.id ? decodeURIComponent(params.id) : "";
   const [quotation, setQuotation] = useState<Quotation | null>(null);
+  const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("quotations");
-    if (stored) {
+    if (!quotationId) {
+      setLoading(false);
+      return;
+    }
+
+    async function loadQuotation() {
+      setLoading(true);
       try {
-        const quotations: Quotation[] = JSON.parse(stored);
-        const found = quotations.find((q) => q.id === quotationId);
-        setQuotation(found || null);
+        const data = await quotationsAPI.getById(quotationId);
+        
+        if (data && (data.id || data.quotationNumber || data.quotation_number)) {
+          setQuotation(data);
+        } else {
+          // Try to get from localStorage directly as last resort
+          if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem('quotations');
+            if (stored) {
+              try {
+                const quotations = JSON.parse(stored);
+                const found = quotations.find((q: any) => {
+                  const qId = String(q.id || '').toLowerCase().trim();
+                  const searchId = String(quotationId || '').toLowerCase().trim();
+                  return qId === searchId || qId.includes(searchId) || searchId.includes(qId);
+                });
+                if (found) {
+                  setQuotation(found);
+                  setLoading(false);
+                  return;
+                }
+              } catch (e) {
+                // Silently handle localStorage parse errors
+              }
+            }
+          }
+          
+          // Last resort: try fetching all quotations and finding by ID
+          try {
+            const allQuotations = await quotationsAPI.getAll();
+            const found = allQuotations.find((q: any) => {
+              const qId = String(q.id || '').toLowerCase().trim();
+              const searchId = String(quotationId || '').toLowerCase().trim();
+              return qId === searchId;
+            });
+            if (found) {
+              setQuotation(found);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            // Silently handle fetch errors
+          }
+          
+          setQuotation(null);
+        }
       } catch (e) {
-        console.error("Error loading quotation:", e);
+        setQuotation(null);
+      } finally {
+        setLoading(false);
       }
     }
+    loadQuotation();
   }, [quotationId]);
 
-  const formatDate = (v: string) => {
-    try {
-      const d = new Date(v);
-      return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(
-        d.getDate()
-      ).padStart(2, "0")}/${String(d.getFullYear()).slice(-2)}`;
-    } catch {
-      return v;
-    }
-  };
-
-  const formatCurrency = (amount: string) => {
-    const n = parseFloat((amount || "").toString().replace(/[^0-9.]/g, ""));
-    return isNaN(n)
-      ? amount
-      : `Php ${n.toLocaleString("en-US", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`;
-  };
 
   const generatePDF = async () => {
     if (!quotation) return;
     
     setPdfLoading(true);
     try {
+      // Create PDF
       const doc = new jsPDF();
       const pw = doc.internal.pageSize.getWidth();
       const ph = doc.internal.pageSize.getHeight();
       const margin = 10;
       let y = 10;
 
-      // LOGO - Reduced to 22px
+      // LOGO - Compressed and optimized
       try {
         const resp = await fetch("/images/fcmlogo.png");
+        if (!resp.ok) throw new Error("Logo not found");
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const img = new Image();
+        img.crossOrigin = "anonymous";
         img.src = url;
 
-        await new Promise((resolve) => {
-          img.onload = () => {
-            const w = 22;
-            const h = (img.height / img.width) * w;
-            doc.addImage(img, "PNG", (pw - w) / 2, y, w, h);
-            y += h + 4;
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
             URL.revokeObjectURL(url);
-            resolve(null);
+            reject(new Error("Logo load timeout"));
+          }, 5000);
+
+          img.onload = () => {
+            try {
+              // Create a canvas to compress the image
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              if (!ctx) {
+                throw new Error("Canvas context not available");
+              }
+              
+              const maxWidth = 100; // Max width for logo
+              const maxHeight = 100;
+              let width = img.width;
+              let height = img.height;
+              
+              // Resize if needed
+              if (width > maxWidth || height > maxHeight) {
+                const ratio = Math.min(maxWidth / width, maxHeight / height);
+                width = width * ratio;
+                height = height * ratio;
+              }
+              
+              canvas.width = width;
+              canvas.height = height;
+              ctx.drawImage(img, 0, 0, width, height);
+              
+              // Convert to PNG (original format)
+              const dataUrl = canvas.toDataURL('image/png');
+              
+              if (dataUrl && dataUrl !== 'data:,') {
+                const w = 22;
+                const h = (height / width) * w;
+                doc.addImage(dataUrl, "PNG", (pw - w) / 2, y, w, h);
+                y += h + 4;
+              }
+              URL.revokeObjectURL(url);
+              clearTimeout(timeout);
+              resolve(null);
+            } catch (err) {
+              URL.revokeObjectURL(url);
+              clearTimeout(timeout);
+              reject(err);
+            }
+          };
+          
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            clearTimeout(timeout);
+            resolve(null); // Resolve without error, just skip the logo
           };
         });
       } catch {
@@ -102,7 +190,7 @@ export default function ViewQuotationPage() {
 
       // CONTACT INFO
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);  // Increased to 11pt
+      doc.setFontSize(11);
       doc.text("517-4428 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
       y += 4;
       doc.text("Simborio, Tayud, Lilo-an, Cebu, 6002", pw / 2, y, { align: "center" });
@@ -116,76 +204,71 @@ export default function ViewQuotationPage() {
       y += 7;
 
       // DATE + NUMBER
-      doc.setFontSize(11);  // Increased to 11pt
+      doc.setFontSize(11);
       doc.text(`DATE: ${formatDate(quotation.date)}`, margin, y);
       doc.text(`#${quotation.quotationNumber}`, pw - margin, y, { align: "right" });
       y += 5;
       doc.text(`Valid Until: ${formatDate(quotation.validUntil)}`, margin, y);
       y += 8;
 
-      // CLIENT INFO HEADER - Reduced height to 6px
+      // CLIENT INFO HEADER
       doc.setFillColor(0, 128, 0);
       doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);  // Increased to 12pt
+      doc.setFontSize(12);
       doc.text("CLIENT INFORMATION", pw / 2, y, { align: "center" });
       y += 9;
 
-      // CLIENT FIELDS - Reduced line height to 5.5px
+      // CLIENT FIELDS
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);  // Increased to 11pt
+      doc.setFontSize(11);
       const lh = 5.5;
       
-      // NAME
       doc.text("NAME: ", margin + 5, y);
       doc.setFont("helvetica", "bold");
       doc.text(quotation.clientName, margin + 5 + doc.getTextWidth("NAME: "), y);
       doc.setFont("helvetica", "normal");
       y += lh;
       
-      // JOB DESCRIPTION
       doc.text("JOB DESCRIPTION: ", margin + 5, y);
       doc.setFont("helvetica", "bold");
       doc.text(quotation.jobDescription, margin + 5 + doc.getTextWidth("JOB DESCRIPTION: "), y);
       doc.setFont("helvetica", "normal");
       y += lh;
       
-      // CONTACT
       doc.text("CONTACT: ", margin + 5, y);
       doc.setFont("helvetica", "bold");
       doc.text(quotation.clientContact || "N/A", margin + 5 + doc.getTextWidth("CONTACT: "), y);
       doc.setFont("helvetica", "normal");
       y += lh;
       
-      // INSTALLATION ADDRESS
       doc.text("INSTALLATION ADDRESS: ", margin + 5, y);
       doc.setFont("helvetica", "bold");
       doc.text(quotation.installationAddress, margin + 5 + doc.getTextWidth("INSTALLATION ADDRESS: "), y);
       doc.setFont("helvetica", "normal");
       y += lh;
       
-      // ATTENTION
       doc.text("ATTENTION: ", margin + 5, y);
       doc.setFont("helvetica", "bold");
       doc.text(quotation.attention, margin + 5 + doc.getTextWidth("ATTENTION: "), y);
       doc.setFont("helvetica", "normal");
       y += 9;
 
-      // DESCRIPTION HEADER - Reduced height to 6px
+      // SCOPE OF WORK HEADER
       doc.setFillColor(0, 128, 0);
       doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);  // Increased to 12pt
-      doc.text("DESCRIPTION", pw / 2, y, { align: "center" });
+      doc.setFontSize(12);
+      doc.text("SCOPE OF WORK", pw / 2, y, { align: "center" });
       y += 9;
 
       // DESCRIPTION - Show items from quotation
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);  // Increased to 11pt
+      doc.setFontSize(11);
       
       const validItems = (quotation.items || []).filter(item => item.description || item.price);
       if (validItems.length > 0) {
@@ -194,15 +277,13 @@ export default function ViewQuotationPage() {
             doc.addPage();
             y = margin;
           }
-          // Format: "• Item description          Price" or "1.) Item description          Price"
           const priceNum = parseFloat((item.price || "0").replace(/[^0-9.]/g, ""));
           const priceText = isNaN(priceNum) ? "Php 0" : `Php ${priceNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
           const shouldNumber = validItems.length > 1;
           const itemText = shouldNumber ? `${index + 1}.) ${item.description || ""}` : `• ${item.description || ""}`;
           const priceX = pw - margin - 5;
-          const descriptionWidth = priceX - margin - 5 - 20; // Leave space for bullet/number and price
+          const descriptionWidth = priceX - margin - 5 - 20;
           
-          // Draw item bullet/number and description
           const lines = doc.splitTextToSize(itemText, descriptionWidth);
           let firstLineY = y;
           lines.forEach((l: string) => {
@@ -210,39 +291,41 @@ export default function ViewQuotationPage() {
             y += 4;
           });
           
-          // Draw price aligned to the right on the first line
           doc.text(priceText, priceX, firstLineY, { align: "right" });
           y += 2;
         });
       }
       
       y += 3;
-      doc.setFontSize(10);  // Increased to 10pt
+      doc.setFontSize(10);
       doc.text("******* NOTHING FOLLOWS *********", pw / 2, y, { align: "center" });
       y += 9;
 
-      // TOTAL
+      // TOTAL - Calculate from items if available, otherwise use stored totalDue
+      const calculatedTotal = validItems.length > 0 && validItems.some(item => item.price && item.price.toString().trim() !== "")
+        ? calculateTotalFromItems(validItems)
+        : quotation.totalDue;
+      
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);  // Increased to 12pt
+      doc.setFontSize(12);
       doc.text("TOTAL DUE", margin + 5, y);
-      doc.text(formatCurrency(quotation.totalDue), pw - margin - 5, y, { align: "right" });
+      doc.text(formatCurrency(calculatedTotal), pw - margin - 5, y, { align: "right" });
       y += 9;
 
-      // TERMS HEADER - Reduced height to 6px
+      // TERMS HEADER
       doc.setFillColor(0, 128, 0);
       doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
       doc.setFont("helvetica", "bold");
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(12);  // Increased to 12pt
+      doc.setFontSize(12);
       doc.text("TERMS AND CONDITIONS", pw / 2, y, { align: "center" });
       y += 9;
 
       // TERMS AND CONDITIONS
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);  // Increased to 11pt
+      doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
       
-      // Static terms - always display these
       const staticTerms = [
         "Customers will be billed after 30 days upon completion and turnover of work with 7 days warranty",
         "Please email the signed price quote to the address above.",
@@ -261,14 +344,14 @@ export default function ViewQuotationPage() {
 
       y += 4;
 
-      // PROPOSAL PARAGRAPH
-      const totalFormatted = formatCurrency(quotation.totalDue);
-
-      // Proposal paragraph with bold total
+      // PROPOSAL PARAGRAPH - Use calculated total
+      const calculatedTotalForProposal = validItems.length > 0 && validItems.some(item => item.price && item.price.toString().trim() !== "")
+        ? calculateTotalFromItems(validItems)
+        : quotation.totalDue;
+      const totalFormatted = formatCurrency(calculatedTotalForProposal);
       const proposalStart = "FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of  ";
       const proposalEnd = ".";
 
-      // Calculate text width to position bold text correctly
       const proposalStartLines = doc.splitTextToSize(proposalStart, pw - margin * 2 - 10);
       proposalStartLines.forEach((line: string, index: number) => {
         doc.text(line, margin + 5, y);
@@ -277,21 +360,16 @@ export default function ViewQuotationPage() {
         }
       });
 
-      // Get the last line width to position bold text
       const lastLineWidth = doc.getTextWidth(proposalStartLines[proposalStartLines.length - 1] || "");
       const maxWidth = pw - margin * 2 - 10;
-      
-      // Check if bold text fits on same line
       const boldTextWidth = doc.getTextWidth(totalFormatted);
       if (lastLineWidth + boldTextWidth <= maxWidth) {
-        // Same line
         doc.setFont("helvetica", "bold");
         doc.text(totalFormatted, margin + 5 + lastLineWidth, y);
         doc.setFont("helvetica", "normal");
         doc.text(proposalEnd, margin + 5 + lastLineWidth + boldTextWidth, y);
         y += 4;
       } else {
-        // New line
         y += 4;
         doc.setFont("helvetica", "bold");
         doc.text(totalFormatted, margin + 5, y);
@@ -303,7 +381,7 @@ export default function ViewQuotationPage() {
       y += 8;
 
       // ACCEPTANCE
-      doc.setFontSize(11);  // Increased to 11pt
+      doc.setFontSize(11);
       doc.text("Customer Acceptance (sign below):", margin + 5, y);
       y += 6;
       doc.setFontSize(10);
@@ -313,54 +391,98 @@ export default function ViewQuotationPage() {
       const xEnd = pw - margin - 10;
       doc.line(xStart, y, xEnd, y);
 
-      y += 2;  // Further reduced from 3 to 2
+      y += 2;
 
-      // SIGNATURE image (draw first, above everything)
+      // SIGNATURE image - Compressed
       let signatureHeight = 0;
       try {
         const resp = await fetch("/images/signature.png");
+        if (!resp.ok) throw new Error("Signature not found");
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const img = new Image();
+        img.crossOrigin = "anonymous";
         img.src = url;
 
-        await new Promise((resolve) => {
-          img.onload = () => {
-            const w = 55;
-            const h = (img.height / img.width) * w;
-            signatureHeight = h;
-            const sigX = (pw - w) / 2;
-            doc.addImage(img, "PNG", sigX, y, w, h);
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
             URL.revokeObjectURL(url);
-            resolve(null);
+            reject(new Error("Signature load timeout"));
+          }, 5000);
+
+          img.onload = () => {
+            try {
+              // Create a canvas to compress the image
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              if (!ctx) {
+                throw new Error("Canvas context not available");
+              }
+              
+              const maxWidth = 200; // Max width for signature
+              const maxHeight = 200;
+              let width = img.width;
+              let height = img.height;
+              
+              // Resize if needed
+              if (width > maxWidth || height > maxHeight) {
+                const ratio = Math.min(maxWidth / width, maxHeight / height);
+                width = width * ratio;
+                height = height * ratio;
+              }
+              
+              canvas.width = width;
+              canvas.height = height;
+              ctx.drawImage(img, 0, 0, width, height);
+              
+              // Convert to PNG (original format)
+              const dataUrl = canvas.toDataURL('image/png');
+              
+              if (dataUrl && dataUrl !== 'data:,') {
+                const w = 55;
+                const h = (height / width) * w;
+                signatureHeight = h;
+                const sigX = (pw - w) / 2;
+                doc.addImage(dataUrl, "PNG", sigX, y, w, h);
+              }
+              URL.revokeObjectURL(url);
+              clearTimeout(timeout);
+              resolve(null);
+            } catch (err) {
+              URL.revokeObjectURL(url);
+              clearTimeout(timeout);
+              reject(err);
+            }
           };
+          
           img.onerror = () => {
-            resolve(null);
+            URL.revokeObjectURL(url);
+            clearTimeout(timeout);
+            resolve(null); // Resolve without error, just skip the signature
           };
         });
       } catch {
-        // Signature image not found, continue without it
+        // Signature image not found - skip it
       }
 
-      // Position CONFIRMED text below signature - extremely close
-      y += signatureHeight + 0.5;  // Reduced from 1 to 0.5 for very close spacing
+      y += signatureHeight + 0.5;
 
       // SIGNATURE NAME
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);  // Increased to 12pt
+      doc.setFontSize(12);
       doc.text("CONFIRMED : FLORENTINO MANA-AY JR.", pw / 2, y, { align: "center" });
 
-      // FOOTER - minimal spacing
-      y += 5;  // Further reduced from 6 to 5
+      // FOOTER
+      y += 5;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);  // Increased to 11pt
+      doc.setFontSize(11);
       doc.text("If you have any questions about this sales quotation, please contact", pw / 2, y, { align: "center" });
-      y += 5;  // Further reduced from 4 to 3.5
+      y += 5;
       doc.text("Mr. Florentino Mana-ay Jr - 09239480967", pw / 2, y, { align: "center" });
-      y += 6;  // Reduced from 7 to 6
-       doc.setFont("helvetica", "bolditalic");
-       doc.setFontSize(11);  // Increased to 11pt
-       doc.text("Thank you for your Business!", pw / 2, y, { align: "center" });
+      y += 6;
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(11);
+      doc.text("Thank you for your Business!", pw / 2, y, { align: "center" });
 
       doc.save(`quotation-${quotation.quotationNumber}.pdf`);
     } catch (error) {
@@ -371,11 +493,118 @@ export default function ViewQuotationPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!quotation) return;
+    
+    if (!confirm(`Are you sure you want to delete quotation #${quotation.quotationNumber}? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const success = await quotationsAPI.delete(quotationId);
+      if (success) {
+        router.push("/admin/quotations");
+      } else {
+        alert("Failed to delete quotation. Please try again.");
+        setDeleting(false);
+      }
+    } catch (error) {
+      console.error("Error deleting quotation:", error);
+      alert("Failed to delete quotation. Please try again.");
+      setDeleting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-100">
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+              <p className="text-slate-600 text-lg">Loading quotation details...</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (!quotation) {
     return (
-      <main className="p-12 text-center">
-        <p>Quotation not found.</p>
-        <Link href="/admin/quotations">Go Back</Link>
+      <main className="min-h-screen bg-slate-100">
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 md:p-16 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="mb-6">
+                <svg
+                  className="mx-auto h-20 w-20 text-slate-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-semibold text-slate-900 mb-3">
+                Quotation Not Found
+              </h3>
+              <p className="text-slate-600 mb-2">
+                The quotation you're looking for doesn't exist or may have been deleted.
+              </p>
+              <p className="text-sm text-slate-500 mb-8">
+                Quotation ID: <span className="font-mono bg-slate-100 px-2 py-1 rounded">{quotationId}</span>
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Link
+                  href="/admin/quotations"
+                  className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-6 py-3 text-sm font-medium text-white hover:bg-emerald-700 transition shadow-sm hover:shadow-md"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                    />
+                  </svg>
+                  Back to Quotations
+                </Link>
+                <Link
+                  href="/admin/quotations/create"
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-6 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Create New Quotation
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     );
   }
@@ -383,74 +612,75 @@ export default function ViewQuotationPage() {
   return (
     <main className="min-h-screen bg-slate-100">
       <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left sidebar menu */}
-          <aside className="lg:col-span-3">
-            <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 flex flex-col gap-3 sticky top-6">
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                <div className="h-10 w-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-lg font-bold">
-                  F
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
-                    FCM
-                  </p>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
-                    Dashboard
-                  </p>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Admin Panel
-                  </p>
-                </div>
-              </div>
-              <nav className="flex flex-col gap-1 text-sm">
-                <Link
-                  href="/admin"
-                  className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/admin/projects"
-                  className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
-                >
-                  Projects
-                </Link>
-                <span className="rounded-lg px-3 py-2 bg-emerald-50 text-emerald-700 font-medium">
-                  Quotations
-                </span>
-              </nav>
-            </div>
-          </aside>
-
+        <div className="grid grid-cols-1 gap-6 items-start">
           {/* Main content */}
-          <div className="lg:col-span-9">
+          <div className="w-full">
             <div className="mb-6 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Link
-                  href="/admin/quotations"
+                <button
+                  onClick={() => {
+                    if (typeof window !== "undefined") {
+                      const referrer = document.referrer;
+                      // Check if we came from quotations list (not a detail/edit page)
+                      if (referrer && referrer.includes("/admin/quotations") && !referrer.includes("/admin/quotations/")) {
+                        // If we came from quotations list, go back to it
+                        router.push("/admin/quotations");
+                      } else if (referrer && referrer.includes("/admin")) {
+                        // If we came from another admin page, go back once
+                        if (window.history.length > 1) {
+                          router.back();
+                        } else {
+                          router.push("/admin");
+                        }
+                      } else {
+                        // Default: go to admin dashboard
+                        router.push("/admin");
+                      }
+                    } else {
+                      router.push("/admin");
+                    }
+                  }}
                   className="rounded-md border-2 border-slate-400 p-2.5 text-slate-800 hover:border-slate-500 transition flex items-center justify-center bg-white shadow-sm"
                   aria-label="Go back"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
                   </svg>
-                </Link>
+                </button>
                 <div>
                   <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Quotation #{quotation.quotationNumber}</h1>
                   <p className="text-sm text-slate-600">View quotation details</p>
                 </div>
               </div>
           <div className="flex items-center gap-3">
-            <Link href={`/admin/quotations/${quotationId}/edit`} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition">
+            <Link 
+              href={`/admin/quotations/${encodeURIComponent(quotationId)}/edit`} 
+              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
               Edit
             </Link>
             <button 
               onClick={generatePDF} 
-              disabled={pdfLoading}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={pdfLoading || deleting || loading}
+              className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
             >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
               {pdfLoading ? "Generating..." : "Download PDF"}
+            </button>
+            <button 
+              onClick={handleDelete} 
+              disabled={deleting || pdfLoading || loading}
+              className="inline-flex items-center gap-2 rounded-md bg-red-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              {deleting ? "Deleting..." : "Delete"}
             </button>
           </div>
         </div>
@@ -458,7 +688,19 @@ export default function ViewQuotationPage() {
         <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 md:p-8 space-y-6">
           <div className="border-b border-slate-200 pb-4">
             <div className="flex items-center justify-between mb-4">
-              <div></div>
+              <div>
+                {/* Last Edited on the left side */}
+                {(quotation.updatedAt || quotation.lastEditedBy) && (
+                  <div>
+                    <p className="text-xs text-slate-500">
+                      Last edited: {quotation.updatedAt ? formatDate(quotation.updatedAt) : 'N/A'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      by {quotation.lastEditedBy || 'Admin'}
+                    </p>
+                  </div>
+                )}
+              </div>
               <div className="text-right">
                 <p className="text-sm font-semibold text-slate-900">#{quotation.quotationNumber}</p>
               </div>
@@ -475,6 +717,7 @@ export default function ViewQuotationPage() {
               <span className="ml-2 font-medium text-slate-900">{quotation.validUntil}</span>
             </div>
           </div>
+
 
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
             <h3 className="text-sm font-semibold text-emerald-900 mb-3">CLIENT INFORMATION</h3>
@@ -503,33 +746,42 @@ export default function ViewQuotationPage() {
           </div>
 
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-emerald-900 mb-3">DESCRIPTION</h3>
+            <h3 className="text-sm font-semibold text-emerald-900 mb-3">SCOPE OF WORK</h3>
             
             {/* Items with prices - show first, using bullets */}
-            {(quotation.items && quotation.items.length > 0 && quotation.items.some(item => item.description || item.price)) ? (
+            {quotation.items && Array.isArray(quotation.items) && quotation.items.length > 0 && quotation.items.some((item: any) => item && (item.description || item.price)) ? (
               <div className="space-y-2 mb-4">
                 {quotation.items
-                  .filter(item => item.description || item.price)
-                  .map((item, index) => (
+                  .filter((item: any) => item && (item.description || item.price))
+                  .map((item: any, index: number) => (
                     <div key={index} className="flex items-center justify-between">
                       <p className="text-sm text-slate-900">
                         • {item.description || "N/A"}
                       </p>
                       <p className="text-sm font-semibold text-slate-900 ml-4 whitespace-nowrap">
-                        {item.price ? (item.price.toLowerCase().includes("php") || item.price.includes("₱") ? item.price : `Php ${item.price}`) : "N/A"}
+                        {item.price ? formatCurrency(item.price) : "N/A"}
                       </p>
                     </div>
                   ))}
               </div>
-            ) : null}
+            ) : (
+              <p className="text-sm text-slate-500 mb-4">No description items added.</p>
+            )}
             
             <p className="text-xs text-slate-500 mb-4">******** NOTHING FOLLOWS ********</p>
             
             <div className="mt-4 text-right">
-              <p className="text-sm font-semibold text-slate-900">TOTAL DUE: {quotation.totalDue}</p>
+              <p className="text-sm font-semibold text-slate-900">
+                TOTAL DUE: <span className="text-red-600">
+                  {quotation.items && Array.isArray(quotation.items) && quotation.items.some((item: any) => item && item.price && item.price.toString().trim() !== "") 
+                    ? calculateTotalFromItems(quotation.items)
+                    : formatCurrency(quotation.totalDue)}
+                </span>
+              </p>
             </div>
           </div>
         </div>
+
           </div>
         </div>
       </div>
