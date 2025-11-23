@@ -11,7 +11,6 @@ export default function QuoteRequestSuccessPage() {
       <main className="min-h-screen bg-gray-50 pt-24 pb-12">
         <div className="container mx-auto px-6 max-w-2xl">
           <div className="bg-white rounded-lg shadow-lg p-8 md:p-10 text-center">
-            {/* Success Icon */}
             <div className="mb-6">
               <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
                 <svg
@@ -30,7 +29,6 @@ export default function QuoteRequestSuccessPage() {
               </div>
             </div>
 
-            {/* Success Message */}
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
               Quote Request Submitted!
             </h1>
@@ -41,7 +39,6 @@ export default function QuoteRequestSuccessPage() {
               We have received your quote request and will review it shortly. Our team will contact you within 24-48 hours to discuss your project requirements and provide you with a detailed quotation.
             </p>
 
-            {/* Additional Information */}
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-6 mb-8">
               <h2 className="text-lg font-semibold text-emerald-900 mb-3">
                 What happens next?
@@ -68,7 +65,6 @@ export default function QuoteRequestSuccessPage() {
               </ul>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 href="/"

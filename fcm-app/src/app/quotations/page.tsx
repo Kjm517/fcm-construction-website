@@ -100,7 +100,6 @@ export default function Quotations() {
         throw new Error(errorData.error || 'Failed to submit quote request');
       }
 
-      // Redirect to success page
       router.push('/quotations/success');
     } catch (error: any) {
       console.error('Error submitting quote request:', error);
