@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -26,7 +26,7 @@ type Reviewer = {
   username: string;
 };
 
-export default function AdminInboxPage() {
+function AdminInboxPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestId = searchParams.get('requestId');
@@ -486,6 +486,23 @@ export default function AdminInboxPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function AdminInboxPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen bg-slate-100">
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-12 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
+            <p className="text-slate-600 mt-4">Loading...</p>
+          </div>
+        </div>
+      </main>
+    }>
+      <AdminInboxPageContent />
+    </Suspense>
   );
 }
 

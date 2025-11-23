@@ -498,8 +498,7 @@ export default function AdminHomePage() {
         ? localStorage.getItem('admin-user-id') 
         : null;
 
-      // Check ownership
-      if (userId !== selectedReminder.created_by) {
+      if (userId !== selectedReminder.creator?.id) {
         alert('You can only edit reminders you created');
         setUpdatingReminder(false);
         return;
@@ -971,40 +970,40 @@ export default function AdminHomePage() {
                     };
                     
                     return (
-                      <Link
-                        key={project.id}
-                        href={`/admin/projects/${project.id}`}
-                        className="block rounded-xl border border-slate-200 p-4 hover:border-emerald-400 hover:shadow-md transition bg-slate-50"
-                      >
-                        <div className="flex justify-between items-start gap-3">
-                          <div>
-                            <h3 className="text-sm md:text-base font-semibold text-slate-900">
-                              {project.name}
-                            </h3>
-                            <p className="text-xs md:text-sm text-slate-600 mt-1">
-                              {project.client} · {project.address}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-1">
-                              Deadline:{" "}
-                              <span className="font-medium">
+                  <Link
+                    key={project.id}
+                    href={`/admin/projects/${project.id}`}
+                    className="block rounded-xl border border-slate-200 p-4 hover:border-emerald-400 hover:shadow-md transition bg-slate-50"
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <div>
+                        <h3 className="text-sm md:text-base font-semibold text-slate-900">
+                          {project.name}
+                        </h3>
+                        <p className="text-xs md:text-sm text-slate-600 mt-1">
+                          {project.client} · {project.address}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Deadline:{" "}
+                          <span className="font-medium">
                                 {formatDeadline(project.deadline)}
-                              </span>
-                            </p>
-                          </div>
-                          <div className="text-right min-w-[88px]">
-                            <p className="text-xs text-slate-600">Progress</p>
-                            <p className="text-sm font-semibold text-emerald-600">
-                              {project.progress}%
-                            </p>
-                            <div className="mt-1 h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
-                              <div
-                                className="h-full bg-emerald-500"
-                                style={{ width: `${project.progress}%` }}
-                              />
-                            </div>
-                          </div>
+                          </span>
+                        </p>
+                      </div>
+                      <div className="text-right min-w-[88px]">
+                        <p className="text-xs text-slate-600">Progress</p>
+                        <p className="text-sm font-semibold text-emerald-600">
+                          {project.progress}%
+                        </p>
+                        <div className="mt-1 h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500"
+                            style={{ width: `${project.progress}%` }}
+                          />
                         </div>
-                      </Link>
+                      </div>
+                    </div>
+                  </Link>
                     );
                   })
                 )}
@@ -1017,7 +1016,7 @@ export default function AdminHomePage() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-slate-900">
                   Task Reminders
-                </h2>
+              </h2>
                 <button
                   onClick={handleCreateReminder}
                   className="rounded-full bg-emerald-600 text-white p-2 hover:bg-emerald-700 transition shadow-sm"
@@ -1048,7 +1047,7 @@ export default function AdminHomePage() {
                     
                     return (
                       <div
-                        key={reminder.id}
+                    key={reminder.id}
                         onClick={() => handleReminderClick(reminder)}
                         className={`block rounded-lg border p-3 transition cursor-pointer ${
                           deadlineStatus?.status === 'overdue'
@@ -1061,7 +1060,7 @@ export default function AdminHomePage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="text-xs text-emerald-700 font-semibold">
+                    <p className="text-xs text-emerald-700 font-semibold">
                                 {formatReminderDateTime(reminder)}
                               </p>
                               {deadlineStatus && (
@@ -1077,13 +1076,13 @@ export default function AdminHomePage() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm font-medium text-slate-900 mt-1">
-                              {reminder.title}
-                            </p>
+                    <p className="text-sm font-medium text-slate-900 mt-1">
+                      {reminder.title}
+                    </p>
                             {reminder.description && (
                               <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                                {reminder.description}
-                              </p>
+                      {reminder.description}
+                    </p>
                             )}
                             {reminder.projects && (
                               <p className="text-xs text-slate-500 mt-1">
@@ -1122,21 +1121,21 @@ export default function AdminHomePage() {
                   </p>
                 ) : (
                   <>
-                    {requests.map((request) => (
+                {requests.map((request) => (
                       <Link
-                        key={request.id}
+                    key={request.id}
                         href={`/admin/inbox?requestId=${request.id}`}
                         className="block rounded-lg border border-slate-200 p-3 bg-slate-50 hover:bg-slate-100 hover:border-emerald-300 transition cursor-pointer"
-                      >
-                        <p className="text-sm font-semibold text-slate-900">
-                          {request.client}
-                        </p>
-                        <p className="text-xs text-slate-600 mt-0.5">
-                          {request.type}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-1">
-                          Submitted {request.submitted}
-                        </p>
+                  >
+                    <p className="text-sm font-semibold text-slate-900">
+                      {request.client}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {request.type}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Submitted {request.submitted}
+                    </p>
                       </Link>
                     ))}
                     {requests.length >= 5 && (
@@ -1579,10 +1578,9 @@ export default function AdminHomePage() {
                     View Project
                   </Link>
                 )}
-                {/* Edit and Delete buttons - only show if user is the creator */}
                 {(() => {
                   const userId = typeof window !== 'undefined' ? localStorage.getItem('admin-user-id') : null;
-                  const isOwner = userId && selectedReminder.created_by === userId;
+                  const isOwner = userId && selectedReminder.creator?.id === userId;
                   return isOwner ? (
                     <>
                       <button
@@ -1603,8 +1601,8 @@ export default function AdminHomePage() {
                             deadline: deadlineStr,
                             priority: selectedReminder.priority || 'medium',
                             projectId: selectedReminder.project_id || '',
-                            taggedUserIds: selectedReminder.tags?.filter(t => t.user_id).map(t => t.user_id) || [],
-                            taggedPositions: selectedReminder.tags?.filter(t => t.position).map(t => t.position!) || [],
+                            taggedUserIds: selectedReminder.tags?.filter(t => t.user_id).map(t => t.user_id!).filter((id): id is string => id !== null) || [],
+                            taggedPositions: selectedReminder.tags?.filter(t => t.position).map(t => t.position!).filter((pos): pos is string => pos !== null) || [],
                           });
                           setIsEditingReminder(true);
                         }}

@@ -142,7 +142,12 @@ export default function CreateQuotationPage() {
   };
   
   const addItem = () => {
-    const newItems = [...(formData.items || []), { description: "", price: "" }];
+    const currentItems = formData.items || [];
+    if (currentItems.length >= 6) {
+      alert("Maximum of 6 items allowed per quotation.");
+      return;
+    }
+    const newItems = [...currentItems, { description: "", price: "" }];
     const total = calculateTotalFromItems(newItems);
     setFormData((p) => ({
       ...p,
@@ -525,19 +530,7 @@ export default function CreateQuotationPage() {
             </div>
 
             <div className="border-t border-slate-200 pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-slate-900">Description</h3>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                  Add Item
-                </button>
-              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Description</h3>
               <div className="space-y-4">
                 {(formData.items || []).map((item, index) => (
                   <div key={index} className="border border-slate-200 rounded-lg p-4 relative">
@@ -581,6 +574,21 @@ export default function CreateQuotationPage() {
                   </div>
                 ))}
               </div>
+              {(formData.items || []).length < 6 && (
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="mt-4 flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  Add Item
+                </button>
+              )}
+              {(formData.items || []).length >= 6 && (
+                <p className="mt-4 text-sm text-gray-500 italic">Maximum of 6 items reached.</p>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">

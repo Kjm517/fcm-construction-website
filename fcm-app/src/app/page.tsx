@@ -194,6 +194,73 @@ export default function Home() {
                 </p>
               </div>
             </div>
+
+            <div className="bg-white rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition group">
+              <div className="aspect-[4/3] relative overflow-hidden">
+                <Image 
+                  src="/images/jb-banilad.jpg" 
+                  alt="Jollibee Banilad" 
+                  fill
+                  className="object-cover group-hover:scale-110 transition duration-300"
+                />
+              </div>
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Jollibee Banilad
+                </h3>
+                <p className="text-gray-600">
+                  - Renovation of counter
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition group">
+              <div className="aspect-[4/3] relative overflow-hidden">
+                <Image 
+                  src="/images/jb-guadalupe.jpg" 
+                  alt="Jollibee Guadalupe" 
+                  fill
+                  className="object-cover group-hover:scale-110 transition duration-300"
+                />
+              </div>
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Jollibee Guadalupe
+                </h3>
+                <p className="text-gray-600">
+                  - Repainting of Jollibee Drive Thru
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition group">
+              <div className="aspect-[4/3] relative overflow-hidden grid grid-cols-2 gap-1">
+                <div className="relative overflow-hidden">
+                  <Image 
+                    src="/images/residential-1.jpg" 
+                    alt="Residential Project" 
+                    fill
+                    className="object-cover group-hover:scale-110 transition duration-300"
+                  />
+                </div>
+                <div className="relative overflow-hidden">
+                  <Image 
+                    src="/images/residential-2.jpg" 
+                    alt="Residential Project" 
+                    fill
+                    className="object-cover group-hover:scale-110 transition duration-300"
+                  />
+                </div>
+              </div>
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Residential Projects
+                </h3>
+                <p className="text-gray-600">
+                  - Residential Construction
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>

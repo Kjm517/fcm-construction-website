@@ -1,4 +1,3 @@
-// VIEW QUOTATION PAGE – OPTIMIZED
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -40,6 +39,15 @@ export default function ViewQuotationPage() {
   const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    confirmColor?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!quotationId) {
@@ -55,7 +63,6 @@ export default function ViewQuotationPage() {
         if (data && (data.id || data.quotationNumber || data.quotation_number)) {
           setQuotation(data);
         } else {
-          // Try to get from localStorage directly as last resort
           if (typeof window !== 'undefined') {
             const stored = localStorage.getItem('quotations');
             if (stored) {
@@ -72,12 +79,11 @@ export default function ViewQuotationPage() {
                   return;
                 }
               } catch (e) {
-                // Silently handle localStorage parse errors
+                // Handle localStorage parse errors
               }
             }
           }
           
-          // Last resort: try fetching all quotations and finding by ID
           try {
             const allQuotations = await quotationsAPI.getAll();
             const found = allQuotations.find((q: any) => {
@@ -91,7 +97,7 @@ export default function ViewQuotationPage() {
               return;
             }
           } catch (e) {
-            // Silently handle fetch errors
+            // Handle fetch errors
           }
           
           setQuotation(null);
@@ -111,14 +117,11 @@ export default function ViewQuotationPage() {
     
     setPdfLoading(true);
     try {
-      // Create PDF
       const doc = new jsPDF();
       const pw = doc.internal.pageSize.getWidth();
       const ph = doc.internal.pageSize.getHeight();
       const margin = 10;
       let y = 10;
-
-      // LOGO - Compressed and optimized
       try {
         const resp = await fetch("/images/fcmlogo.png");
         if (!resp.ok) throw new Error("Logo not found");
@@ -136,19 +139,16 @@ export default function ViewQuotationPage() {
 
           img.onload = () => {
             try {
-              // Create a canvas to compress the image
               const canvas = document.createElement('canvas');
               const ctx = canvas.getContext('2d');
               if (!ctx) {
                 throw new Error("Canvas context not available");
               }
               
-              const maxWidth = 100; // Max width for logo
+              const maxWidth = 100;
               const maxHeight = 100;
               let width = img.width;
               let height = img.height;
-              
-              // Resize if needed
               if (width > maxWidth || height > maxHeight) {
                 const ratio = Math.min(maxWidth / width, maxHeight / height);
                 width = width * ratio;
@@ -181,14 +181,12 @@ export default function ViewQuotationPage() {
           img.onerror = () => {
             URL.revokeObjectURL(url);
             clearTimeout(timeout);
-            resolve(null); // Resolve without error, just skip the logo
+            resolve(null);
           };
         });
       } catch {
-        // ignore if logo not present
+        // Logo not found
       }
-
-      // CONTACT INFO
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
       doc.text("517-4428 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
@@ -203,7 +201,6 @@ export default function ViewQuotationPage() {
       doc.line(margin, y, pw - margin, y);
       y += 7;
 
-      // DATE + NUMBER
       doc.setFontSize(11);
       doc.text(`DATE: ${formatDate(quotation.date)}`, margin, y);
       doc.text(`#${quotation.quotationNumber}`, pw - margin, y, { align: "right" });
@@ -211,7 +208,6 @@ export default function ViewQuotationPage() {
       doc.text(`Valid Until: ${formatDate(quotation.validUntil)}`, margin, y);
       y += 8;
 
-      // CLIENT INFO HEADER
       doc.setFillColor(0, 128, 0);
       doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
       doc.setTextColor(255, 255, 255);
@@ -220,7 +216,6 @@ export default function ViewQuotationPage() {
       doc.text("CLIENT INFORMATION", pw / 2, y, { align: "center" });
       y += 9;
 
-      // CLIENT FIELDS
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
@@ -256,7 +251,6 @@ export default function ViewQuotationPage() {
       doc.setFont("helvetica", "normal");
       y += 9;
 
-      // SCOPE OF WORK HEADER
       doc.setFillColor(0, 128, 0);
       doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
       doc.setTextColor(255, 255, 255);
@@ -265,7 +259,6 @@ export default function ViewQuotationPage() {
       doc.text("SCOPE OF WORK", pw / 2, y, { align: "center" });
       y += 9;
 
-      // DESCRIPTION - Show items from quotation
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
@@ -296,12 +289,11 @@ export default function ViewQuotationPage() {
         });
       }
       
-      y += 3;
+      y += 2;
       doc.setFontSize(10);
       doc.text("******* NOTHING FOLLOWS *********", pw / 2, y, { align: "center" });
-      y += 9;
+      y += 6;
 
-      // TOTAL - Calculate from items if available, otherwise use stored totalDue
       const calculatedTotal = validItems.length > 0 && validItems.some(item => item.price && item.price.toString().trim() !== "")
         ? calculateTotalFromItems(validItems)
         : quotation.totalDue;
@@ -310,18 +302,16 @@ export default function ViewQuotationPage() {
       doc.setFontSize(12);
       doc.text("TOTAL DUE", margin + 5, y);
       doc.text(formatCurrency(calculatedTotal), pw - margin - 5, y, { align: "right" });
-      y += 9;
+      y += 7;
 
-      // TERMS HEADER
       doc.setFillColor(0, 128, 0);
       doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
       doc.setFont("helvetica", "bold");
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
       doc.text("TERMS AND CONDITIONS", pw / 2, y, { align: "center" });
-      y += 9;
+      y += 7;
 
-      // TERMS AND CONDITIONS
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
@@ -337,14 +327,13 @@ export default function ViewQuotationPage() {
         const lines = doc.splitTextToSize(`${i + 1}. ${t}`, pw - margin * 2 - 10);
         lines.forEach((l: string) => {
           doc.text(l, margin + 5, y);
-          y += 4;
+          y += 3.5;
         });
-        y += 2;
+        y += 1.5;
       });
 
-      y += 4;
+      y += 3;
 
-      // PROPOSAL PARAGRAPH - Use calculated total
       const calculatedTotalForProposal = validItems.length > 0 && validItems.some(item => item.price && item.price.toString().trim() !== "")
         ? calculateTotalFromItems(validItems)
         : quotation.totalDue;
@@ -378,12 +367,11 @@ export default function ViewQuotationPage() {
         doc.text(proposalEnd, margin + 5 + endWidth, y);
         y += 4;
       }
-      y += 8;
+      y += 5;
 
-      // ACCEPTANCE
       doc.setFontSize(11);
       doc.text("Customer Acceptance (sign below):", margin + 5, y);
-      y += 6;
+      y += 5;
       doc.setFontSize(10);
       doc.text("X", margin + 5, y);
 
@@ -412,19 +400,17 @@ export default function ViewQuotationPage() {
 
           img.onload = () => {
             try {
-              // Create a canvas to compress the image
               const canvas = document.createElement('canvas');
               const ctx = canvas.getContext('2d');
               if (!ctx) {
                 throw new Error("Canvas context not available");
               }
               
-              const maxWidth = 200; // Max width for signature
+              const maxWidth = 200;
               const maxHeight = 200;
               let width = img.width;
               let height = img.height;
               
-              // Resize if needed
               if (width > maxWidth || height > maxHeight) {
                 const ratio = Math.min(maxWidth / width, maxHeight / height);
                 width = width * ratio;
@@ -435,7 +421,6 @@ export default function ViewQuotationPage() {
               canvas.height = height;
               ctx.drawImage(img, 0, 0, width, height);
               
-              // Convert to PNG (original format)
               const dataUrl = canvas.toDataURL('image/png');
               
               if (dataUrl && dataUrl !== 'data:,') {
@@ -458,28 +443,26 @@ export default function ViewQuotationPage() {
           img.onerror = () => {
             URL.revokeObjectURL(url);
             clearTimeout(timeout);
-            resolve(null); // Resolve without error, just skip the signature
+            resolve(null);
           };
         });
       } catch {
-        // Signature image not found - skip it
+        // Signature not found
       }
 
       y += signatureHeight + 0.5;
 
-      // SIGNATURE NAME
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
+      doc.setFontSize(11);
       doc.text("CONFIRMED : FLORENTINO MANA-AY JR.", pw / 2, y, { align: "center" });
 
-      // FOOTER
-      y += 5;
+      y += 4;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.text("If you have any questions about this sales quotation, please contact", pw / 2, y, { align: "center" });
-      y += 5;
+      y += 4;
       doc.text("Mr. Florentino Mana-ay Jr - 09239480967", pw / 2, y, { align: "center" });
-      y += 6;
+      y += 5;
       doc.setFont("helvetica", "bolditalic");
       doc.setFontSize(11);
       doc.text("Thank you for your Business!", pw / 2, y, { align: "center" });
@@ -493,27 +476,52 @@ export default function ViewQuotationPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!quotation) return;
     
-    if (!confirm(`Are you sure you want to delete quotation #${quotation.quotationNumber}? This action cannot be undone.`)) {
-      return;
-    }
-
-    setDeleting(true);
-    try {
-      const success = await quotationsAPI.delete(quotationId);
-      if (success) {
-        router.push("/admin/quotations");
-      } else {
-        alert("Failed to delete quotation. Please try again.");
-        setDeleting(false);
-      }
-    } catch (error) {
-      console.error("Error deleting quotation:", error);
-      alert("Failed to delete quotation. Please try again.");
-      setDeleting(false);
-    }
+    setConfirmModalData({
+      title: 'Delete Quotation',
+      message: `Are you sure you want to delete quotation #${quotation.quotationNumber}? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      confirmColor: 'bg-red-600 hover:bg-red-700',
+      onConfirm: async () => {
+        setShowConfirmModal(false);
+        setDeleting(true);
+        try {
+          const success = await quotationsAPI.delete(quotationId);
+          if (success) {
+            router.push("/admin/quotations");
+          } else {
+            setConfirmModalData({
+              title: 'Error',
+              message: 'Failed to delete quotation. Please try again.',
+              confirmText: 'OK',
+              onConfirm: () => {
+                setShowConfirmModal(false);
+                setConfirmModalData(null);
+              },
+            });
+            setShowConfirmModal(true);
+            setDeleting(false);
+          }
+        } catch (error) {
+          console.error("Error deleting quotation:", error);
+          setConfirmModalData({
+            title: 'Error',
+            message: 'Failed to delete quotation. Please try again.',
+            confirmText: 'OK',
+            onConfirm: () => {
+              setShowConfirmModal(false);
+              setConfirmModalData(null);
+            },
+          });
+          setShowConfirmModal(true);
+          setDeleting(false);
+        }
+      },
+    });
+    setShowConfirmModal(true);
   };
 
   if (loading) {
@@ -785,6 +793,43 @@ export default function ViewQuotationPage() {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && confirmModalData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                {confirmModalData.title}
+              </h3>
+              <p className="text-sm text-slate-600 mb-6">
+                {confirmModalData.message}
+              </p>
+              <div className="flex gap-3 justify-end">
+                {confirmModalData.cancelText && (
+                  <button
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      setConfirmModalData(null);
+                    }}
+                    className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300 transition"
+                  >
+                    {confirmModalData.cancelText}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    confirmModalData.onConfirm();
+                  }}
+                  className={`px-4 py-2 text-white rounded-lg text-sm font-medium transition ${confirmModalData.confirmColor || 'bg-emerald-600 hover:bg-emerald-700'}`}
+                >
+                  {confirmModalData.confirmText || 'OK'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

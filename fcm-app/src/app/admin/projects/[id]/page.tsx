@@ -46,8 +46,16 @@ export default function AdminProjectPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [savingTasks, setSavingTasks] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    confirmColor?: string;
+  } | null>(null);
 
-  // Load project function
   const loadProject = useCallback(async () => {
     if (!projectId) {
       setLoading(false);
@@ -60,7 +68,6 @@ export default function AdminProjectPage() {
     try {
       console.log('Loading project with ID:', projectId);
       
-      // First try API
       const data = await projectsAPI.getById(projectId);
       console.log('API returned project data:', data);
       
@@ -71,7 +78,6 @@ export default function AdminProjectPage() {
         return;
       }
       
-      // If API didn't return data, try localStorage
       console.log('API returned no data, checking localStorage...');
       if (typeof window !== 'undefined') {
         const stored = localStorage.getItem('projects');
@@ -80,7 +86,6 @@ export default function AdminProjectPage() {
             const projects = JSON.parse(stored);
             console.log('Projects in localStorage:', projects.length);
             
-            // Try multiple ID matching strategies
             const found = projects.find((p: any) => {
               const pId = String(p.id || '').toLowerCase().trim();
               const searchId = String(projectId || '').toLowerCase().trim();
@@ -102,7 +107,6 @@ export default function AdminProjectPage() {
         }
       }
       
-      // Last resort: try fetching all projects and finding by ID
       console.log('Trying to fetch all projects and find by ID...');
       try {
         const allProjects = await projectsAPI.getAll();
@@ -150,32 +154,55 @@ export default function AdminProjectPage() {
     };
   }, [loadProject, projectId]);
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!project) return;
     
-    if (!confirm(`Are you sure you want to delete project "${project.projectName}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    setDeleting(true);
-    try {
-      const success = await projectsAPI.delete(projectId);
-      if (success) {
-        router.push("/admin/projects");
-      } else {
-        alert("Failed to delete project. Please try again.");
-        setDeleting(false);
-      }
-    } catch (error) {
-      console.error("Error deleting project:", error);
-      alert("Failed to delete project. Please try again.");
-      setDeleting(false);
-    }
+    setConfirmModalData({
+      title: 'Delete Project',
+      message: `Are you sure you want to delete project "${project.projectName}"? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      confirmColor: 'bg-red-600 hover:bg-red-700',
+      onConfirm: async () => {
+        setShowConfirmModal(false);
+        setDeleting(true);
+        try {
+          const success = await projectsAPI.delete(projectId);
+          if (success) {
+            router.push("/admin/projects");
+          } else {
+            setConfirmModalData({
+              title: 'Error',
+              message: 'Failed to delete project. Please try again.',
+              confirmText: 'OK',
+              onConfirm: () => {
+                setShowConfirmModal(false);
+                setConfirmModalData(null);
+              },
+            });
+            setShowConfirmModal(true);
+            setDeleting(false);
+          }
+        } catch (error) {
+          console.error("Error deleting project:", error);
+          setConfirmModalData({
+            title: 'Error',
+            message: 'Failed to delete project. Please try again.',
+            confirmText: 'OK',
+            onConfirm: () => {
+              setShowConfirmModal(false);
+              setConfirmModalData(null);
+            },
+          });
+          setShowConfirmModal(true);
+          setDeleting(false);
+        }
+      },
+    });
+    setShowConfirmModal(true);
   };
 
   const handleBack = () => {
-    // Always go directly to projects list from project details
-    // This prevents loops and ensures consistent navigation
     router.push("/admin/projects");
   };
 
@@ -218,21 +245,18 @@ export default function AdminProjectPage() {
       }
     } catch (error) {
       console.error('Error fetching tasks:', error);
-      // Fallback to tasks from project data if API fails
       if (project?.tasks) {
         setPhaseList(project.tasks);
       }
     }
   }, [projectId, project?.tasks]);
 
-  // Load tasks when projectId changes
   useEffect(() => {
     if (projectId) {
       fetchTasks();
     }
   }, [projectId, fetchTasks]);
 
-  // Save single task to database
   const saveTask = async (task: Phase) => {
     if (!projectId || !task.id || !project) return;
     
@@ -290,12 +314,10 @@ export default function AdminProjectPage() {
       isFinished: !phase.isFinished,
     };
     
-    // Optimistically update UI
     setPhaseList(prev =>
       prev.map(p => p.id === phaseId ? updated : p)
     );
     
-    // Save to database (this will also update project's last_edited_by and updatedAt in local state)
     await saveTask(updated);
   };
 
@@ -329,7 +351,6 @@ export default function AdminProjectPage() {
       setPhaseList(prev => [...prev, newTask]);
       setNewPhaseName("");
       
-      // Update project's last_edited_by and updatedAt in local state
       setProject(prev => prev ? {
         ...prev,
         lastEditedBy: username,
@@ -368,7 +389,6 @@ export default function AdminProjectPage() {
 
       setPhaseList(prev => prev.filter(phase => phase.id !== phaseId));
       
-      // Update project's last_edited_by and updatedAt in local state
       setProject(prev => prev ? {
         ...prev,
         lastEditedBy: username,
@@ -386,10 +406,8 @@ export default function AdminProjectPage() {
     if (!fileName) return '';
     if (fileName.length <= maxLength) return fileName;
     
-    // Get file extension
     const lastDot = fileName.lastIndexOf('.');
     if (lastDot === -1) {
-      // No extension, just truncate
       return fileName.substring(0, maxLength - 3) + '...';
     }
     
@@ -420,7 +438,6 @@ export default function AdminProjectPage() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } else if (file.url) {
-      // If we have a URL, download from that URL
       const link = document.createElement('a');
       link.href = file.url;
       link.download = file.name;
@@ -430,7 +447,6 @@ export default function AdminProjectPage() {
     }
   };
 
-  // Get files from project data
   const projectFiles: ProjectFile[] = project?.files || [];
 
   if (loading) {
@@ -844,6 +860,43 @@ export default function AdminProjectPage() {
           </aside>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && confirmModalData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                {confirmModalData.title}
+              </h3>
+              <p className="text-sm text-slate-600 mb-6">
+                {confirmModalData.message}
+              </p>
+              <div className="flex gap-3 justify-end">
+                {confirmModalData.cancelText && (
+                  <button
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      setConfirmModalData(null);
+                    }}
+                    className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300 transition"
+                  >
+                    {confirmModalData.cancelText}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    confirmModalData.onConfirm();
+                  }}
+                  className={`px-4 py-2 text-white rounded-lg text-sm font-medium transition ${confirmModalData.confirmColor || 'bg-emerald-600 hover:bg-emerald-700'}`}
+                >
+                  {confirmModalData.confirmText || 'OK'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
