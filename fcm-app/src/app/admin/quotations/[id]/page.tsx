@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import { quotationsAPI } from "@/lib/api";
 import { formatCurrency, calculateTotalFromItems, formatDateForPDF, formatDate } from "@/lib/utils";
+import { getTermsTemplate, type TermsTemplate } from "@/lib/terms-templates";
 
 type QuotationItem = {
   description: string;
@@ -24,6 +25,7 @@ type Quotation = {
   attention: string;
   totalDue: string;
   terms?: string[];
+  termsTemplate?: TermsTemplate;
   items?: QuotationItem[];
   createdAt: number;
   updatedAt?: number;
@@ -189,7 +191,7 @@ export default function ViewQuotationPage() {
       }
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
-      doc.text("517-4428 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
+      doc.text("+639678339448 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
       y += 4;
       doc.text("Simborio, Tayud, Lilo-an, Cebu, 6002", pw / 2, y, { align: "center" });
       y += 4;
@@ -316,14 +318,18 @@ export default function ViewQuotationPage() {
       doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
       
-      const staticTerms = [
-        "Customers will be billed after 30 days upon completion and turnover of work with 7 days warranty",
-        "Please email the signed price quote to the address above.",
-        "Any additional work shall be created with a new quotation.",
-        "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM Trading and Services will not be included in this quotation.",
-      ];
+      const calculatedTotalForProposal = validItems.length > 0 && validItems.some(item => item.price && item.price.toString().trim() !== "")
+        ? calculateTotalFromItems(validItems)
+        : quotation.totalDue;
+      const totalFormatted = formatCurrency(calculatedTotalForProposal);
       
-      staticTerms.forEach((t, i) => {
+      // Get terms based on template - always use template to ensure consistency
+      const template = quotation.termsTemplate || 'template1';
+      const templateData = getTermsTemplate(template, totalFormatted);
+      const termsToUse = templateData.terms; // Always use terms from template
+      
+      // Display terms
+      termsToUse.forEach((t, i) => {
         const lines = doc.splitTextToSize(`${i + 1}. ${t}`, pw - margin * 2 - 10);
         lines.forEach((l: string) => {
           doc.text(l, margin + 5, y);
@@ -334,38 +340,69 @@ export default function ViewQuotationPage() {
 
       y += 3;
 
-      const calculatedTotalForProposal = validItems.length > 0 && validItems.some(item => item.price && item.price.toString().trim() !== "")
-        ? calculateTotalFromItems(validItems)
-        : quotation.totalDue;
-      const totalFormatted = formatCurrency(calculatedTotalForProposal);
-      const proposalStart = "FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of  ";
-      const proposalEnd = ".";
+      // Display proposal text based on template
+      if (template === 'template2' && templateData.proposalText) {
+        // Template 2 has custom proposal text - need to insert total in the middle
+        const proposalStart = templateData.proposalText;
+        const proposalEnd = ".";
+        
+        const proposalStartLines = doc.splitTextToSize(proposalStart, pw - margin * 2 - 10);
+        proposalStartLines.forEach((line: string, index: number) => {
+          doc.text(line, margin + 5, y);
+          if (index < proposalStartLines.length - 1) {
+            y += 4;
+          }
+        });
 
-      const proposalStartLines = doc.splitTextToSize(proposalStart, pw - margin * 2 - 10);
-      proposalStartLines.forEach((line: string, index: number) => {
-        doc.text(line, margin + 5, y);
-        if (index < proposalStartLines.length - 1) {
+        const lastLineWidth = doc.getTextWidth(proposalStartLines[proposalStartLines.length - 1] || "");
+        const maxWidth = pw - margin * 2 - 10;
+        const boldTextWidth = doc.getTextWidth(totalFormatted);
+        if (lastLineWidth + boldTextWidth <= maxWidth) {
+          doc.setFont("helvetica", "bold");
+          doc.text(totalFormatted, margin + 5 + lastLineWidth, y);
+          doc.setFont("helvetica", "normal");
+          doc.text(proposalEnd, margin + 5 + lastLineWidth + boldTextWidth, y);
+          y += 4;
+        } else {
+          y += 4;
+          doc.setFont("helvetica", "bold");
+          doc.text(totalFormatted, margin + 5, y);
+          doc.setFont("helvetica", "normal");
+          const endWidth = doc.getTextWidth(totalFormatted);
+          doc.text(proposalEnd, margin + 5 + endWidth, y);
           y += 4;
         }
-      });
-
-      const lastLineWidth = doc.getTextWidth(proposalStartLines[proposalStartLines.length - 1] || "");
-      const maxWidth = pw - margin * 2 - 10;
-      const boldTextWidth = doc.getTextWidth(totalFormatted);
-      if (lastLineWidth + boldTextWidth <= maxWidth) {
-        doc.setFont("helvetica", "bold");
-        doc.text(totalFormatted, margin + 5 + lastLineWidth, y);
-        doc.setFont("helvetica", "normal");
-        doc.text(proposalEnd, margin + 5 + lastLineWidth + boldTextWidth, y);
-        y += 4;
       } else {
-        y += 4;
-        doc.setFont("helvetica", "bold");
-        doc.text(totalFormatted, margin + 5, y);
-        doc.setFont("helvetica", "normal");
-        const endWidth = doc.getTextWidth(totalFormatted);
-        doc.text(proposalEnd, margin + 5 + endWidth, y);
-        y += 4;
+        // Template 1 - standard proposal
+        const proposalStart = "FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of  ";
+        const proposalEnd = ".";
+
+        const proposalStartLines = doc.splitTextToSize(proposalStart, pw - margin * 2 - 10);
+        proposalStartLines.forEach((line: string, index: number) => {
+          doc.text(line, margin + 5, y);
+          if (index < proposalStartLines.length - 1) {
+            y += 4;
+          }
+        });
+
+        const lastLineWidth = doc.getTextWidth(proposalStartLines[proposalStartLines.length - 1] || "");
+        const maxWidth = pw - margin * 2 - 10;
+        const boldTextWidth = doc.getTextWidth(totalFormatted);
+        if (lastLineWidth + boldTextWidth <= maxWidth) {
+          doc.setFont("helvetica", "bold");
+          doc.text(totalFormatted, margin + 5 + lastLineWidth, y);
+          doc.setFont("helvetica", "normal");
+          doc.text(proposalEnd, margin + 5 + lastLineWidth + boldTextWidth, y);
+          y += 4;
+        } else {
+          y += 4;
+          doc.setFont("helvetica", "bold");
+          doc.text(totalFormatted, margin + 5, y);
+          doc.setFont("helvetica", "normal");
+          const endWidth = doc.getTextWidth(totalFormatted);
+          doc.text(proposalEnd, margin + 5 + endWidth, y);
+          y += 4;
+        }
       }
       y += 5;
 
@@ -660,7 +697,7 @@ export default function ViewQuotationPage() {
                   <p className="text-sm text-slate-600">View quotation details</p>
                 </div>
               </div>
-          <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3">
             <Link 
               href={`/admin/quotations/${encodeURIComponent(quotationId)}/edit`} 
               className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition"
@@ -788,9 +825,37 @@ export default function ViewQuotationPage() {
               </p>
             </div>
           </div>
-        </div>
 
+          {/* Terms Template Preview */}
+          <div className="rounded-lg bg-white border border-slate-200 p-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">
+              Terms and Conditions Template
+            </h3>
+            <div className="mb-3">
+              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                {(quotation.termsTemplate || 'template1') === 'template1' ? 'Template 1 - Loan Terms' : 'Template 2 - Downpayment Terms'}
+              </span>
+            </div>
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <h4 className="text-sm font-semibold text-slate-900 mb-3">Preview:</h4>
+              <div className="space-y-2">
+                {getTermsTemplate(quotation.termsTemplate || 'template1', formatCurrency(quotation.totalDue)).terms.map((term: string, index: number) => (
+                  <p key={index} className="text-sm text-slate-700">
+                    <span className="font-semibold">{index + 1}.</span> {term}
+                  </p>
+                ))}
+                {(quotation.termsTemplate || 'template1') === 'template2' && (
+                  <div className="mt-3 pt-3 border-t border-slate-300">
+                    <p className="text-sm text-slate-700 italic">
+                      FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of <span className="font-bold">{formatCurrency(quotation.totalDue)}</span>.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
+        </div>
+        </div>
         </div>
       </div>
 

@@ -7,6 +7,7 @@ import jsPDF from "jspdf";
 import { quotationsAPI } from "@/lib/api";
 import { formatCurrency, calculateTotalFromItems, formatDateForPDF } from "@/lib/utils";
 import { getCurrentUserDisplayName } from "@/lib/auth";
+import { getTermsTemplate, type TermsTemplate } from "@/lib/terms-templates";
 
 type QuotationItem = {
   description: string;
@@ -24,6 +25,7 @@ type QuotationData = {
   attention: string;
   totalDue: string;
   terms: string[];
+  termsTemplate?: TermsTemplate;
   items?: QuotationItem[];
 };
 
@@ -39,6 +41,7 @@ type Quotation = {
   attention: string;
   totalDue: string;
   terms?: string[];
+  termsTemplate?: TermsTemplate;
   items?: QuotationItem[];
   createdAt: number;
   updatedAt?: number;
@@ -67,6 +70,7 @@ export default function EditQuotationPage() {
       "Any additional work shall be created with a new quotation.",
       "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM trading and services will not be included in this quotation.",
     ],
+    termsTemplate: 'template1',
     items: [
       { description: "", price: "" },
     ],
@@ -91,6 +95,14 @@ export default function EditQuotationPage() {
             ? calculateTotalFromItems(items)
             : found.totalDue || "Php 0.00";
           
+          // Get the template and regenerate terms from it
+          const template = found.termsTemplate || 'template1';
+          const totalFormatted = calculatedTotal || "Php 0.00";
+          const templateData = getTermsTemplate(template, totalFormatted);
+          
+          console.log('Loading quotation - Template:', template, 'Found termsTemplate:', found.termsTemplate);
+          console.log('Regenerated terms:', templateData.terms);
+          
           setFormData({
             quotationNumber: found.quotationNumber,
             date: found.date,
@@ -101,12 +113,8 @@ export default function EditQuotationPage() {
             installationAddress: found.installationAddress,
             attention: found.attention || "",
             totalDue: calculatedTotal,
-            terms: found.terms || [
-              "Customers will be billed after 30 days upon completion and turnover of work with 7 days warranty",
-              "Please email the signed price quote to the address above.",
-              "Any additional work shall be created with a new quotation.",
-              "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM trading and services will not be included in this quotation.",
-            ],
+            terms: templateData.terms, // Always use terms from the template
+            termsTemplate: template,
             items: items,
           });
         }
@@ -130,6 +138,17 @@ export default function EditQuotationPage() {
       newTerms[index] = value;
       return { ...prev, terms: newTerms };
     });
+  };
+
+  const handleTemplateChange = (template: TermsTemplate) => {
+    const totalFormatted = formData.totalDue || "Php 0.00";
+    const templateData = getTermsTemplate(template, totalFormatted);
+    console.log('Template changed to:', template, 'Terms:', templateData.terms);
+    setFormData((prev) => ({ 
+      ...prev, 
+      terms: templateData.terms,
+      termsTemplate: template,
+    }));
   };
 
 
@@ -204,7 +223,7 @@ export default function EditQuotationPage() {
     // CONTACT INFO - No header text
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
-    doc.text("517-4428 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
+    doc.text("+639678339448 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
     y += 4;
     doc.text("Simborio, Tayud, Lilo-an, Cebu, 6002", pw / 2, y, { align: "center" });
     y += 4;
@@ -337,24 +356,112 @@ export default function EditQuotationPage() {
     doc.setFont("helvetica", "bold");
     doc.text("TOTAL DUE", margin + 3, y);
     doc.text(totalFormatted, pw - margin - 3, y, { align: "right" });
-    y += 9;
+    y += 7;
 
-    // Check if we need a new page for the proposal and signature
+    // Check if we need a new page for terms and proposal
     if (y > ph - 70) {
       doc.addPage();
       y = margin;
     }
 
-    y += 4;
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    const proposalText = `FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of   ${totalFormatted}`;
+    // TERMS AND CONDITIONS
+    doc.setFillColor(0, 128, 0);
+    doc.rect(margin, y - 4, pw - margin * 2, 6, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.text("TERMS AND CONDITIONS", pw / 2, y, { align: "center" });
+    y += 7;
 
-    const proposalLines = doc.splitTextToSize(proposalText, pw - margin * 2 - 6);
-    proposalLines.forEach((line: string) => {
-      doc.text(line, margin + 3, y);
-      y += 4;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    
+    // Get terms based on template
+    const template = formData.termsTemplate || 'template1';
+    const templateData = getTermsTemplate(template, totalFormatted);
+    const termsToUse = formData.terms && formData.terms.length > 0 ? formData.terms : templateData.terms;
+    
+    // Display terms
+    termsToUse.forEach((t, i) => {
+      if (y > ph - 60) {
+        doc.addPage();
+        y = margin;
+      }
+      const lines = doc.splitTextToSize(`${i + 1}. ${t}`, pw - margin * 2 - 6);
+      lines.forEach((l: string) => {
+        doc.text(l, margin + 3, y);
+        y += 3.5;
+      });
+      y += 1.5;
     });
+
+    y += 3;
+
+    // Display proposal text based on template
+    if (template === 'template2' && templateData.proposalText) {
+      // Template 2 has custom proposal text
+      const proposalStart = templateData.proposalText;
+      const proposalEnd = ".";
+      
+      const proposalStartLines = doc.splitTextToSize(proposalStart, pw - margin * 2 - 6);
+      proposalStartLines.forEach((line: string, index: number) => {
+        doc.text(line, margin + 3, y);
+        if (index < proposalStartLines.length - 1) {
+          y += 4;
+        }
+      });
+
+      const lastLineWidth = doc.getTextWidth(proposalStartLines[proposalStartLines.length - 1] || "");
+      const maxWidth = pw - margin * 2 - 6;
+      const boldTextWidth = doc.getTextWidth(totalFormatted);
+      if (lastLineWidth + boldTextWidth <= maxWidth) {
+        doc.setFont("helvetica", "bold");
+        doc.text(totalFormatted, margin + 3 + lastLineWidth, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(proposalEnd, margin + 3 + lastLineWidth + boldTextWidth, y);
+        y += 4;
+      } else {
+        y += 4;
+        doc.setFont("helvetica", "bold");
+        doc.text(totalFormatted, margin + 3, y);
+        doc.setFont("helvetica", "normal");
+        const endWidth = doc.getTextWidth(totalFormatted);
+        doc.text(proposalEnd, margin + 3 + endWidth, y);
+        y += 4;
+      }
+    } else {
+      // Template 1 - standard proposal
+      const proposalStart = "FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of  ";
+      const proposalEnd = ".";
+
+      const proposalStartLines = doc.splitTextToSize(proposalStart, pw - margin * 2 - 6);
+      proposalStartLines.forEach((line: string, index: number) => {
+        doc.text(line, margin + 3, y);
+        if (index < proposalStartLines.length - 1) {
+          y += 4;
+        }
+      });
+
+      const lastLineWidth = doc.getTextWidth(proposalStartLines[proposalStartLines.length - 1] || "");
+      const maxWidth = pw - margin * 2 - 6;
+      const boldTextWidth = doc.getTextWidth(totalFormatted);
+      if (lastLineWidth + boldTextWidth <= maxWidth) {
+        doc.setFont("helvetica", "bold");
+        doc.text(totalFormatted, margin + 3 + lastLineWidth, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(proposalEnd, margin + 3 + lastLineWidth + boldTextWidth, y);
+        y += 4;
+      } else {
+        y += 4;
+        doc.setFont("helvetica", "bold");
+        doc.text(totalFormatted, margin + 3, y);
+        doc.setFont("helvetica", "normal");
+        const endWidth = doc.getTextWidth(totalFormatted);
+        doc.text(proposalEnd, margin + 3 + endWidth, y);
+        y += 4;
+      }
+    }
     y += 8;
 
     // ACCEPTANCE
@@ -436,11 +543,21 @@ export default function EditQuotationPage() {
       // Get current user display name
       const currentUser = await getCurrentUserDisplayName();
       
+      // Regenerate terms from template to ensure they match
+      const template = formData.termsTemplate || 'template1';
+      const totalFormatted = formData.totalDue || "Php 0.00";
+      const templateData = getTermsTemplate(template, totalFormatted);
+      
       const dataToSave = {
         ...formData,
         items: itemsToSave.length > 0 ? itemsToSave : null,
         lastEditedBy: currentUser,
+        termsTemplate: template,
+        terms: templateData.terms, // Always use terms from the current template
       };
+      
+      console.log('Saving quotation with template:', template, 'Terms:', templateData.terms);
+      console.log('Data to save:', JSON.stringify(dataToSave, null, 2));
       
       await quotationsAPI.update(quotationId, dataToSave);
       router.push(`/admin/quotations/${quotationId}`);
@@ -640,6 +757,44 @@ export default function EditQuotationPage() {
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
                     placeholder="e.g., Sir Athan"
                   />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Terms and Conditions Template *
+                  </label>
+                  <select
+                    value={formData.termsTemplate || 'template1'}
+                    onChange={(e) => handleTemplateChange(e.target.value as TermsTemplate)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 bg-white"
+                  >
+                    <option value="template1">Template 1 - Loan Terms</option>
+                    <option value="template2">Template 2 - Downpayment Terms</option>
+                  </select>
+                  <p className="mt-2 text-xs text-gray-500">
+                    {formData.termsTemplate === 'template1' 
+                      ? 'Standard billing and warranty terms'
+                      : 'Payment-based terms with down payment and full payment conditions'}
+                  </p>
+
+                  {/* Preview Section */}
+                  <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                    <h4 className="text-sm font-semibold text-slate-900 mb-3">Template Preview:</h4>
+                    <div className="space-y-2">
+                      {formData.terms.map((term, index) => (
+                        <p key={index} className="text-sm text-slate-700">
+                          <span className="font-semibold">{index + 1}.</span> {term}
+                        </p>
+                      ))}
+                      {formData.termsTemplate === 'template2' && (
+                        <div className="mt-3 pt-3 border-t border-slate-300">
+                          <p className="text-sm text-slate-700 italic">
+                            FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of <span className="font-bold">{formatCurrency(formData.totalDue)}</span>.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

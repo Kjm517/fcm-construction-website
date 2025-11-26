@@ -84,6 +84,7 @@ export const transformQuotation = (dbQuotation: any) => {
     attention: dbQuotation.attention || '',
     totalDue: dbQuotation.total_due || dbQuotation.totalDue,
     terms: dbQuotation.terms || [],
+    termsTemplate: dbQuotation.terms_template || dbQuotation.termsTemplate || 'template1',
     items: dbQuotation.items || [],
     createdAt: dbQuotation.created_at ? new Date(dbQuotation.created_at).getTime() : (dbQuotation.createdAt || Date.now()),
     updatedAt: dbQuotation.updated_at ? new Date(dbQuotation.updated_at).getTime() : (dbQuotation.updatedAt || undefined),
@@ -111,6 +112,7 @@ export const transformQuotationForDB = (quotation: any) => ({
   attention: quotation.attention || null,
   totalDue: quotation.totalDue,
   terms: quotation.terms || null,
+  termsTemplate: quotation.termsTemplate || 'template1',
   items: quotation.items || null,
   lastEditedBy: quotation.lastEditedBy || null,
   createdBy: quotation.createdBy || null,
@@ -569,6 +571,7 @@ export const quotationsAPI = {
         ...quotations[index],
         ...quotation,
         id,
+        termsTemplate: quotation.termsTemplate || 'template1', // Ensure termsTemplate is preserved
       }
       if (typeof window !== 'undefined') {
         localStorage.setItem('quotations', JSON.stringify(quotations))

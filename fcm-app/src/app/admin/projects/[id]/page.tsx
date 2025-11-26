@@ -344,7 +344,8 @@ export default function AdminProjectPage() {
       );
 
       if (!response.ok) {
-        throw new Error('Failed to create task');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to create task: ${response.status} ${response.statusText}`);
       }
 
       const newTask = await response.json();

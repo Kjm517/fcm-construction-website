@@ -20,7 +20,10 @@ export async function GET(
       .eq('project_id', projectId)
       .order('order_index', { ascending: true })
 
-    if (error) throw error
+    if (error) {
+      console.error('Supabase query error:', error)
+      throw error
+    }
 
     // Transform to frontend format
     const tasks = (data || []).map((task: any) => ({
@@ -33,8 +36,9 @@ export async function GET(
     return NextResponse.json(tasks)
   } catch (error: any) {
     console.error('Error fetching tasks:', error)
+    const errorMessage = error.message || error.details || 'Failed to fetch tasks'
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch tasks' },
+      { error: errorMessage, details: error.hint || null },
       { status: 500 }
     )
   }
@@ -61,13 +65,33 @@ export async function POST(
   try {
     const body = await request.json()
 
+    // Try to validate project exists, but don't fail if it doesn't
+    // (project might be in localStorage only)
+    const { data: projectExists, error: projectError } = await supabase!
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .maybeSingle()
+
+    // Log warning if project doesn't exist, but continue anyway
+    // (allows tasks for localStorage-only projects)
+    if (projectError && projectError.code === 'PGRST116') {
+      console.warn(`Project ${projectId} not found in database - may be localStorage-only project`)
+    } else if (projectError) {
+      console.warn('Project validation warning:', projectError.message)
+    }
+
     // Get the max order_index for this project
-    const { data: existingTasks } = await supabase!
+    const { data: existingTasks, error: queryError } = await supabase!
       .from('project_tasks')
       .select('order_index')
       .eq('project_id', projectId)
       .order('order_index', { ascending: false })
       .limit(1)
+
+    if (queryError) {
+      console.error('Error querying existing tasks:', queryError)
+    }
 
     const nextOrderIndex = existingTasks && existingTasks.length > 0
       ? (existingTasks[0].order_index || 0) + 1
@@ -86,7 +110,10 @@ export async function POST(
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('Supabase insert error:', error)
+      throw error
+    }
 
     // Update project's last_edited_by and updated_at when task is created
     try {
@@ -116,8 +143,9 @@ export async function POST(
     return NextResponse.json(task, { status: 201 })
   } catch (error: any) {
     console.error('Error creating task:', error)
+    const errorMessage = error.message || error.details || 'Failed to create task'
     return NextResponse.json(
-      { error: error.message || 'Failed to create task' },
+      { error: errorMessage, details: error.hint || null },
       { status: 500 }
     )
   }

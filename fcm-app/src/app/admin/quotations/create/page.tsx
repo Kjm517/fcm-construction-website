@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import { quotationsAPI } from "@/lib/api";
 import { formatCurrency, calculateTotalFromItems, formatDateForPDF } from "@/lib/utils";
+import { getTermsTemplate, type TermsTemplate } from "@/lib/terms-templates";
 
 type QuotationItem = {
   description: string;
@@ -23,6 +24,7 @@ type QuotationData = {
   attention: string;
   totalDue: string;
   terms: string[];
+  termsTemplate?: 'template1' | 'template2';
   items?: QuotationItem[];
 };
 
@@ -73,6 +75,7 @@ export default function CreateQuotationPage() {
       "Any additional work shall be created with a new quotation.",
       "If there is any request for a contract bond or any expenses that are out of the price quotation, FCM trading and services will not be included in this quotation.",
     ],
+    termsTemplate: 'template1',
     items: [
       { description: "", price: "" },
     ],
@@ -126,6 +129,16 @@ export default function CreateQuotationPage() {
     const updated = [...formData.terms];
     updated[index] = value;
     setFormData((p) => ({ ...p, terms: updated }));
+  };
+
+  const handleTemplateChange = (template: TermsTemplate) => {
+    const totalFormatted = formData.totalDue || "Php 0.00";
+    const templateData = getTermsTemplate(template, totalFormatted);
+    setFormData((p) => ({ 
+      ...p, 
+      terms: templateData.terms,
+      termsTemplate: template,
+    }));
   };
 
   const handleItemChange = (index: number, field: "description" | "price", value: string) => {
@@ -198,7 +211,7 @@ export default function CreateQuotationPage() {
     // CONTACT INFO - No header text
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
-    doc.text("517-4428 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
+    doc.text("+639678339448 / 516-2922 / 09239480967", pw / 2, y, { align: "center" });
     y += 4;
     doc.text("Simborio, Tayud, Lilo-an, Cebu, 6002", pw / 2, y, { align: "center" });
     y += 4;
@@ -331,11 +344,43 @@ export default function CreateQuotationPage() {
       y = margin;
     }
 
-    // PROPOSAL PARAGRAPH with total
-    const proposalText = `FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of  ${totalFormatted}`;
+    // PROPOSAL PARAGRAPH with total - use template
+    const template = formData.termsTemplate || 'template1';
+    const templateData = getTermsTemplate(template, totalFormatted);
+    
+    let proposalText: string;
+    if (template === 'template2' && templateData.proposalText) {
+      proposalText = `${templateData.proposalText} ${totalFormatted}.`;
+    } else {
+      proposalText = `FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of  ${totalFormatted}`;
+    }
+    
     const proposalLines = doc.splitTextToSize(proposalText, pw - margin * 2 - 6);
-    proposalLines.forEach((line: string) => {
-      doc.text(line, margin + 3, y);
+    proposalLines.forEach((line: string, index: number) => {
+      if (index === proposalLines.length - 1 && template === 'template2') {
+        // Last line - handle bold total for template2
+        const lineWithoutTotal = line.replace(totalFormatted, '').replace('.', '').trim();
+        const lastLineWidth = doc.getTextWidth(lineWithoutTotal);
+        const maxWidth = pw - margin * 2 - 6;
+        const boldTextWidth = doc.getTextWidth(totalFormatted);
+        
+        if (lastLineWidth + boldTextWidth <= maxWidth) {
+          doc.text(lineWithoutTotal, margin + 3, y);
+          doc.setFont("helvetica", "bold");
+          doc.text(totalFormatted, margin + 3 + lastLineWidth, y);
+          doc.setFont("helvetica", "normal");
+          doc.text(".", margin + 3 + lastLineWidth + boldTextWidth, y);
+        } else {
+          doc.text(lineWithoutTotal, margin + 3, y);
+          y += 4;
+          doc.setFont("helvetica", "bold");
+          doc.text(totalFormatted, margin + 3, y);
+          doc.setFont("helvetica", "normal");
+          doc.text(".", margin + 3 + doc.getTextWidth(totalFormatted), y);
+        }
+      } else {
+        doc.text(line, margin + 3, y);
+      }
       y += 4;
     });
     y += 8;
@@ -417,9 +462,16 @@ export default function CreateQuotationPage() {
         ? (localStorage.getItem('admin-username') || 'Admin')
         : 'Admin';
       
+      // Regenerate terms from template to ensure they match
+      const template = formData.termsTemplate || 'template1';
+      const totalFormatted = formData.totalDue || "Php 0.00";
+      const templateData = getTermsTemplate(template, totalFormatted);
+      
       const dataToSave = {
         ...formData,
         items: itemsToSave.length > 0 ? itemsToSave : null,
+        termsTemplate: template,
+        terms: templateData.terms, // Always use terms from the current template
         createdBy: currentUser,
       };
       
@@ -525,6 +577,44 @@ export default function CreateQuotationPage() {
                 <div>
                   <label htmlFor="attention" className="block text-sm font-semibold text-gray-700 mb-2">Attention *</label>
                   <input type="text" id="attention" name="attention" value={formData.attention} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Sir Athan" />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Terms and Conditions Template *
+                  </label>
+                  <select
+                    value={formData.termsTemplate || 'template1'}
+                    onChange={(e) => handleTemplateChange(e.target.value as TermsTemplate)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 bg-white"
+                  >
+                    <option value="template1">Template 1 - Loan Terms</option>
+                    <option value="template2">Template 2 - Downpayment Terms</option>
+                  </select>
+                  <p className="mt-2 text-xs text-gray-500">
+                    {formData.termsTemplate === 'template1' 
+                      ? 'Standard billing and warranty terms'
+                      : 'Payment-based terms with down payment and full payment conditions'}
+                  </p>
+
+                  {/* Preview Section */}
+                  <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                    <h4 className="text-sm font-semibold text-slate-900 mb-3">Template Preview:</h4>
+                    <div className="space-y-2">
+                      {formData.terms.map((term, index) => (
+                        <p key={index} className="text-sm text-slate-700">
+                          <span className="font-semibold">{index + 1}.</span> {term}
+                        </p>
+                      ))}
+                      {formData.termsTemplate === 'template2' && (
+                        <div className="mt-3 pt-3 border-t border-slate-300">
+                          <p className="text-sm text-slate-700 italic">
+                            FCM Trading and Services proposes to furnish the items described and specified herein the above-mentioned buyers who accept and bind themselves to the specifications of the materials herein offered, terms and conditions of the proposal, for the sum of <span className="font-bold">{formatCurrency(formData.totalDue)}</span>.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

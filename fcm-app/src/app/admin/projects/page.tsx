@@ -16,10 +16,25 @@ type Project = {
   progress?: number; // Progress percentage
 };
 
+type SortOption = 
+  | 'date-desc' 
+  | 'date-asc' 
+  | 'client-asc' 
+  | 'client-desc' 
+  | 'name-asc' 
+  | 'name-desc' 
+  | 'deadline-asc' 
+  | 'deadline-desc'
+  | 'progress-desc'
+  | 'progress-asc';
+
 export default function AdminProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('date-desc');
 
   const handleBack = () => {
     // Always go directly to admin dashboard from projects list
@@ -52,9 +67,8 @@ export default function AdminProjectsPage() {
           })
         );
         
-        // Sort by most recent first
-        projectsWithProgress.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
         setProjects(projectsWithProgress);
+        setFilteredProjects(projectsWithProgress);
       } catch (e) {
         console.error("Error loading projects:", e);
       } finally {
@@ -72,6 +86,62 @@ export default function AdminProjectsPage() {
       return dateString;
     }
   };
+
+  useEffect(() => {
+    let filtered = [...projects];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((project) => {
+        const projectName = project.projectName?.toLowerCase() || '';
+        const clientName = project.clientName?.toLowerCase() || '';
+        const deadlineStr = formatDeadline(project.deadlineDate).toLowerCase();
+        
+        return (
+          projectName.includes(query) ||
+          clientName.includes(query) ||
+          deadlineStr.includes(query)
+        );
+      });
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortOption) {
+        case 'date-desc':
+          return (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt);
+        case 'date-asc':
+          return (a.updatedAt || a.createdAt) - (b.updatedAt || b.createdAt);
+        case 'client-asc':
+          return (a.clientName || '').localeCompare(b.clientName || '');
+        case 'client-desc':
+          return (b.clientName || '').localeCompare(a.clientName || '');
+        case 'name-asc':
+          return (a.projectName || '').localeCompare(b.projectName || '');
+        case 'name-desc':
+          return (b.projectName || '').localeCompare(a.projectName || '');
+        case 'deadline-asc': {
+          const aDate = new Date(a.deadlineDate).getTime();
+          const bDate = new Date(b.deadlineDate).getTime();
+          return aDate - bDate;
+        }
+        case 'deadline-desc': {
+          const aDate = new Date(a.deadlineDate).getTime();
+          const bDate = new Date(b.deadlineDate).getTime();
+          return bDate - aDate;
+        }
+        case 'progress-desc':
+          return (b.progress || 0) - (a.progress || 0);
+        case 'progress-asc':
+          return (a.progress || 0) - (b.progress || 0);
+        default:
+          return (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt);
+      }
+    });
+
+    setFilteredProjects(filtered);
+  }, [projects, searchQuery, sortOption]);
 
   // Circular Progress Component
   const CircularProgress = ({ progress, size = 60 }: { progress: number; size?: number }) => {
@@ -159,6 +229,59 @@ export default function AdminProjectsPage() {
           </div>
         </div>
 
+        {!loading && projects.length > 0 && (
+          <div className="mb-6 flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
+            <div className="flex-1 max-w-md">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg
+                    className="h-5 w-5 text-slate-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search by project name, client name, or deadline..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <label htmlFor="sort" className="text-sm font-medium text-slate-700 whitespace-nowrap">
+                Sort by:
+              </label>
+              <select
+                id="sort"
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as SortOption)}
+                className="block px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+              >
+                <option value="date-desc">Date Updated (Newest First)</option>
+                <option value="date-asc">Date Updated (Oldest First)</option>
+                <option value="name-asc">Project Name (A-Z)</option>
+                <option value="name-desc">Project Name (Z-A)</option>
+                <option value="client-asc">Client Name (A-Z)</option>
+                <option value="client-desc">Client Name (Z-A)</option>
+                <option value="deadline-asc">Deadline (Earliest First)</option>
+                <option value="deadline-desc">Deadline (Latest First)</option>
+                <option value="progress-desc">Progress (Highest First)</option>
+                <option value="progress-asc">Progress (Lowest First)</option>
+              </select>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-4 md:gap-6 md:grid-cols-2 lg:grid-cols-3">
           {loading ? (
             <div className="col-span-full text-center py-12">
@@ -167,8 +290,30 @@ export default function AdminProjectsPage() {
                 <p className="text-slate-600">Loading projects...</p>
               </div>
             </div>
-          ) : projects.length > 0 ? (
-            projects.map((project) => (
+          ) : filteredProjects.length === 0 && projects.length > 0 ? (
+            <div className="col-span-full text-center py-12">
+              <svg
+                className="mx-auto h-12 w-12 text-slate-400 mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                No projects found
+              </h3>
+              <p className="text-slate-600">
+                Try adjusting your search or filter criteria.
+              </p>
+            </div>
+          ) : filteredProjects.length > 0 ? (
+            filteredProjects.map((project) => (
               <Link
                 key={project.id}
                 href={`/admin/projects/${encodeURIComponent(project.id)}`}

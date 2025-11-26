@@ -107,6 +107,7 @@ export async function PUT(
         attention: body.attention || null,
         total_due: body.totalDue,
         terms: body.terms || null,
+        terms_template: body.termsTemplate || 'template1',
         items: body.items || null,
         last_edited_by: body.lastEditedBy || null,
         updated_at: new Date().toISOString(),
