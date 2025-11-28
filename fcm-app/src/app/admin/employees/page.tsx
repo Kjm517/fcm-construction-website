@@ -24,6 +24,7 @@ const POSITION_OPTIONS = [
   'Secretary',
   'Communications Marketer',
   'Accounting',
+  'Site Engineer'
 ];
 
 export default function AdminEmployeesPage() {
@@ -483,7 +484,7 @@ export default function AdminEmployeesPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">Add New Employee</h2>
+              <h2 className="text-xl font-semibold text-black">Add New Employee</h2>
               <button
                 onClick={closeModals}
                 className="text-slate-400 hover:text-slate-600"

@@ -156,6 +156,7 @@ export default function AdminHomePage() {
     'Secretary',
     'Communications Marketer',
     'Accounting',
+    'Site Engineer'
   ];
 
   useEffect(() => {
