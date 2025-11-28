@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import { quotationsAPI } from "@/lib/api";
-import { formatCurrency, calculateTotalFromItems, formatDateForPDF } from "@/lib/utils";
+import { formatCurrency, calculateTotalFromItems, formatDateForPDF, capitalizeFirstLetters } from "@/lib/utils";
 import { getCurrentUserDisplayName } from "@/lib/auth";
 import { getTermsTemplate, type TermsTemplate } from "@/lib/terms-templates";
 
@@ -132,6 +132,23 @@ export default function EditQuotationPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const name = e.target.name;
+    const value = e.target.value;
+    
+    // Auto-capitalize first letters for text fields when user leaves the field
+    const fieldsToCapitalize = ['clientName', 'jobDescription', 'installationAddress', 'attention'];
+    if (fieldsToCapitalize.includes(name) && value) {
+      const capitalizedValue = capitalizeFirstLetters(value);
+      if (capitalizedValue !== value) {
+        setFormData((prev) => ({
+          ...prev,
+          [name]: capitalizedValue,
+        }));
+      }
+    }
+  };
+
   const handleTermChange = (index: number, value: string) => {
     setFormData((prev) => {
       const newTerms = [...prev.terms];
@@ -157,7 +174,9 @@ export default function EditQuotationPage() {
     if (!updated[index]) {
       updated[index] = { description: "", price: "" };
     }
-    updated[index] = { ...updated[index], [field]: value };
+    // Auto-capitalize first letters for descriptions
+    const processedValue = field === "description" ? capitalizeFirstLetters(value) : value;
+    updated[index] = { ...updated[index], [field]: processedValue };
     
     // Calculate total from all items
     const total = calculateTotalFromItems(updated);
@@ -237,12 +256,22 @@ export default function EditQuotationPage() {
 
     // DATE + NUMBER
     doc.setFontSize(11);
-    const formattedDate = formatDateForPDF(formData.date);
-    const formattedValidUntil = formatDateForPDF(formData.validUntil);
-    doc.text(`DATE: ${formattedDate}`, margin, y);
+    const formatDateNoTime = (dateStr: string) => {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    };
+    const formattedDate = formatDateNoTime(formData.date);
+    const formattedValidUntil = formatDateNoTime(formData.validUntil);
+    const dateText = `DATE: ${formattedDate}`;
+    const validUntilText = `Valid Until: ${formattedValidUntil}`;
+    doc.text(dateText, margin + 3, y);
+    const dateTextWidth = doc.getTextWidth(dateText);
+    doc.text(validUntilText, margin + 3 + dateTextWidth + 20, y);
     doc.text(`#${formData.quotationNumber}`, pw - margin, y, { align: "right" });
-    y += 5;
-    doc.text(`Valid Until: ${formattedValidUntil}`, margin, y);
     y += 8;
 
     // CLIENT INFO HEADER
@@ -321,12 +350,17 @@ export default function EditQuotationPage() {
         const priceText = isNaN(priceNum) ? "Php 0" : `Php ${priceNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const shouldNumber = validItems.length > 1;
         const itemText = shouldNumber ? `${index + 1}.) ${item.description || ""}` : `• ${item.description || ""}`;
+        // Calculate actual price width and reserve space for it
+        const priceWidth = doc.getTextWidth(priceText);
         const priceX = pw - margin - 3;
-        const descriptionWidth = priceX - margin - 3 - 20; // Leave space for bullet/number and price
+        const pricePadding = 10; // Space between description and price
+        const descriptionWidth = priceX - margin - 3 - priceWidth - pricePadding;
+        
+        // Split description into lines that fit within the available width
+        const lines = doc.splitTextToSize(itemText, Math.max(descriptionWidth, 50)); // Minimum 50 units width
+        let firstLineY = y;
         
         // Draw item bullet/number and description
-        const lines = doc.splitTextToSize(itemText, descriptionWidth);
-        let firstLineY = y;
         lines.forEach((line: string) => {
           doc.text(line, margin + 3, y);
           y += 4;
@@ -527,7 +561,9 @@ export default function EditQuotationPage() {
     doc.setFont("helvetica", "bolditalic");
     doc.text("Thank you for your Business!", pw / 2, y, { align: "center" });
 
-    doc.save(`quotation-${formData.quotationNumber}.pdf`);
+    const sanitizeFilename = (str: string) => str.replace(/[<>:"/\\|?*]/g, '-').trim();
+    const filename = `${sanitizeFilename(formData.quotationNumber)} ${sanitizeFilename(formData.clientName)} - ${sanitizeFilename(formData.jobDescription)} (Final Quotation).pdf`;
+    doc.save(filename);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -690,6 +726,7 @@ export default function EditQuotationPage() {
                     name="clientName"
                     value={formData.clientName}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     required
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
                     placeholder="e.g., Jollibee Car car branch"
@@ -721,6 +758,7 @@ export default function EditQuotationPage() {
                     name="jobDescription"
                     value={formData.jobDescription}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     required
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
                     placeholder="e.g., Repairing back wall using hardiflex, wall angle and repainting"
@@ -737,6 +775,7 @@ export default function EditQuotationPage() {
                     name="installationAddress"
                     value={formData.installationAddress}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     required
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
                     placeholder="e.g., Jollibee Car car"
@@ -753,6 +792,7 @@ export default function EditQuotationPage() {
                     name="attention"
                     value={formData.attention}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     required
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400"
                     placeholder="e.g., Sir Athan"

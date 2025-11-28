@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import { quotationsAPI } from "@/lib/api";
-import { formatCurrency, calculateTotalFromItems, formatDateForPDF } from "@/lib/utils";
+import { formatCurrency, calculateTotalFromItems, formatDateForPDF, capitalizeFirstLetters } from "@/lib/utils";
 import { getTermsTemplate, type TermsTemplate } from "@/lib/terms-templates";
 
 type QuotationItem = {
@@ -125,6 +125,23 @@ export default function CreateQuotationPage() {
     });
   };
 
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const name = e.target.name;
+    const value = e.target.value;
+    
+    // Auto-capitalize first letters for text fields when user leaves the field
+    const fieldsToCapitalize = ['clientName', 'jobDescription', 'installationAddress', 'attention'];
+    if (fieldsToCapitalize.includes(name) && value) {
+      const capitalizedValue = capitalizeFirstLetters(value);
+      if (capitalizedValue !== value) {
+        setFormData((p) => ({
+          ...p,
+          [name]: capitalizedValue,
+        }));
+      }
+    }
+  };
+
   const handleTermChange = (index: number, value: string) => {
     const updated = [...formData.terms];
     updated[index] = value;
@@ -146,7 +163,9 @@ export default function CreateQuotationPage() {
     if (!updated[index]) {
       updated[index] = { description: "", price: "" };
     }
-    updated[index] = { ...updated[index], [field]: value };
+    // Auto-capitalize first letters for descriptions
+    const processedValue = field === "description" ? capitalizeFirstLetters(value) : value;
+    updated[index] = { ...updated[index], [field]: processedValue };
     
     // Calculate total from all items
     const total = calculateTotalFromItems(updated);
@@ -225,10 +244,20 @@ export default function CreateQuotationPage() {
 
     // DATE + NUMBER
     doc.setFontSize(11);
-    doc.text(`DATE: ${formatDateForPDF(formData.date)}`, margin, y);
+    const formatDateNoTime = (dateStr: string) => {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    };
+    const dateText = `DATE: ${formatDateNoTime(formData.date)}`;
+    const validUntilText = `Valid Until: ${formatDateNoTime(formData.validUntil)}`;
+    doc.text(dateText, margin + 3, y);
+    const dateTextWidth = doc.getTextWidth(dateText);
+    doc.text(validUntilText, margin + 3 + dateTextWidth + 20, y);
     doc.text(`#${formData.quotationNumber}`, pw - margin, y, { align: "right" });
-    y += 5;
-    doc.text(`Valid Until: ${formatDateForPDF(formData.validUntil)}`, margin, y);
     y += 8; // Reduced spacing
 
     // CLIENT INFO HEADER - More compact
@@ -306,12 +335,17 @@ export default function CreateQuotationPage() {
         const priceText = isNaN(priceNum) ? "Php 0" : `Php ${priceNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const shouldNumber = validItems.length > 1;
         const itemText = shouldNumber ? `${index + 1}.) ${item.description || ""}` : `• ${item.description || ""}`;
+        // Calculate actual price width and reserve space for it
+        const priceWidth = doc.getTextWidth(priceText);
         const priceX = pw - margin - 3;
-        const descriptionWidth = priceX - margin - 3 - 20; // Leave space for bullet/number and price
+        const pricePadding = 10; // Space between description and price
+        const descriptionWidth = priceX - margin - 3 - priceWidth - pricePadding;
+        
+        // Split description into lines that fit within the available width
+        const lines = doc.splitTextToSize(itemText, Math.max(descriptionWidth, 50)); // Minimum 50 units width
+        let firstLineY = y;
         
         // Draw item bullet/number and description
-        const lines = doc.splitTextToSize(itemText, descriptionWidth);
-        let firstLineY = y;
         lines.forEach((l: string) => {
           doc.text(l, margin + 3, y);
           y += 4;
@@ -446,7 +480,9 @@ export default function CreateQuotationPage() {
     doc.text("Thank you for your business!", pw / 2, y, { align: "center" });
 
     // SAVE
-    doc.save(`quotation-${formData.quotationNumber}.pdf`);
+    const sanitizeFilename = (str: string) => str.replace(/[<>:"/\\|?*]/g, '-').trim();
+    const filename = `${sanitizeFilename(formData.quotationNumber)} ${sanitizeFilename(formData.clientName)} - ${sanitizeFilename(formData.jobDescription)} (Final Quotation).pdf`;
+    doc.save(filename);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -556,7 +592,7 @@ export default function CreateQuotationPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label htmlFor="clientName" className="block text-sm font-semibold text-gray-700 mb-2">Client Name *</label>
-                  <input type="text" id="clientName" name="clientName" value={formData.clientName} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Jollibee Car car branch" />
+                  <input type="text" id="clientName" name="clientName" value={formData.clientName} onChange={handleChange} onBlur={handleBlur} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Jollibee Car car branch" />
                 </div>
 
                 <div>
@@ -566,17 +602,17 @@ export default function CreateQuotationPage() {
 
                 <div className="md:col-span-2">
                   <label htmlFor="jobDescription" className="block text-sm font-semibold text-gray-700 mb-2">Job Description *</label>
-                  <input type="text" id="jobDescription" name="jobDescription" value={formData.jobDescription} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Repairing back wall using hardiflex, wall angle and repainting" />
+                  <input type="text" id="jobDescription" name="jobDescription" value={formData.jobDescription} onChange={handleChange} onBlur={handleBlur} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Repairing back wall using hardiflex, wall angle and repainting" />
                 </div>
 
                 <div className="md:col-span-2">
                   <label htmlFor="installationAddress" className="block text-sm font-semibold text-gray-700 mb-2">Installation Address *</label>
-                  <input type="text" id="installationAddress" name="installationAddress" value={formData.installationAddress} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Jollibee Car car" />
+                  <input type="text" id="installationAddress" name="installationAddress" value={formData.installationAddress} onChange={handleChange} onBlur={handleBlur} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Jollibee Car car" />
                 </div>
 
                 <div>
                   <label htmlFor="attention" className="block text-sm font-semibold text-gray-700 mb-2">Attention *</label>
-                  <input type="text" id="attention" name="attention" value={formData.attention} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Sir Athan" />
+                  <input type="text" id="attention" name="attention" value={formData.attention} onChange={handleChange} onBlur={handleBlur} required className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 placeholder:text-gray-400" placeholder="e.g., Sir Athan" />
                 </div>
 
                 <div className="md:col-span-2">

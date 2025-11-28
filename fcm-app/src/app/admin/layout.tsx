@@ -3,18 +3,18 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
+const INACTIVITY_TIMEOUT = 20 * 60 * 1000;
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
   const resetInactivityTimer = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    // Public auth pages that don't require authentication
     const publicAuthPages = ["/admin/login", "/admin/forgot-password"];
     if (publicAuthPages.includes(pathname)) {
       return;
@@ -31,12 +31,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     timeoutRef.current = setTimeout(() => {
       localStorage.removeItem("admin-auth");
-      router.replace("/admin/login");
+      router.replace("/admin/login?inactive=true");
     }, INACTIVITY_TIMEOUT);
   }, [pathname, router]);
 
   useEffect(() => {
-    // Public auth pages that don't require authentication
     const publicAuthPages = ["/admin/login", "/admin/forgot-password"];
     if (publicAuthPages.includes(pathname)) {
       if (timeoutRef.current) {
@@ -56,10 +55,51 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       return;
     }
 
-    // Initialize the timer
+    const lastHiddenTime = localStorage.getItem("admin-last-hidden-time");
+    if (lastHiddenTime) {
+      const timeAway = Date.now() - parseInt(lastHiddenTime, 10);
+      if (timeAway >= INACTIVITY_TIMEOUT) {
+        localStorage.removeItem("admin-auth");
+        localStorage.removeItem("admin-last-hidden-time");
+        router.replace("/admin/login?inactive=true");
+        return;
+      } else {
+        localStorage.removeItem("admin-last-hidden-time");
+      }
+    }
+
     resetInactivityTimer();
 
-    // Listen for user activity events
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        localStorage.setItem("admin-last-hidden-time", Date.now().toString());
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+      } else if (document.visibilityState === 'visible') {
+        const hiddenTime = localStorage.getItem("admin-last-hidden-time");
+        if (hiddenTime) {
+          const timeAway = Date.now() - parseInt(hiddenTime, 10);
+          if (timeAway >= INACTIVITY_TIMEOUT) {
+            // User was away for 20+ minutes, log them out
+            localStorage.removeItem("admin-auth");
+            localStorage.removeItem("admin-last-hidden-time");
+            router.replace("/admin/login?inactive=true");
+            return;
+          } else {
+            localStorage.removeItem("admin-last-hidden-time");
+            resetInactivityTimer();
+          }
+        } else {
+          resetInactivityTimer();
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      localStorage.setItem("admin-last-hidden-time", Date.now().toString());
+    };
+
     const events = [
       'mousedown',
       'mousemove',
@@ -69,34 +109,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       'touchstart',
       'click',
       'focus',
-      'visibilitychange'
     ];
-    
-    // Handle visibility change (tab switching)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        resetInactivityTimer();
-      }
-    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     events.forEach((event) => {
-      if (event === 'visibilitychange') {
-        document.addEventListener(event, handleVisibilityChange);
-      } else {
-        window.addEventListener(event, resetInactivityTimer, true);
-      }
+      window.addEventListener(event, resetInactivityTimer, true);
     });
 
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       events.forEach((event) => {
-        if (event === 'visibilitychange') {
-          document.removeEventListener(event, handleVisibilityChange);
-        } else {
-          window.removeEventListener(event, resetInactivityTimer, true);
-        }
+        window.removeEventListener(event, resetInactivityTimer, true);
       });
     };
   }, [pathname, router, resetInactivityTimer]);

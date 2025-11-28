@@ -204,10 +204,20 @@ export default function ViewQuotationPage() {
       y += 7;
 
       doc.setFontSize(11);
-      doc.text(`DATE: ${formatDate(quotation.date)}`, margin, y);
+      const formatDateNoTime = (dateStr: string) => {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        });
+      };
+      const dateText = `DATE: ${formatDateNoTime(quotation.date)}`;
+      const validUntilText = `Valid Until: ${formatDateNoTime(quotation.validUntil)}`;
+      doc.text(dateText, margin + 5, y);
+      const dateTextWidth = doc.getTextWidth(dateText);
+      doc.text(validUntilText, margin + 5 + dateTextWidth + 20, y);
       doc.text(`#${quotation.quotationNumber}`, pw - margin, y, { align: "right" });
-      y += 5;
-      doc.text(`Valid Until: ${formatDate(quotation.validUntil)}`, margin, y);
       y += 8;
 
       doc.setFillColor(0, 128, 0);
@@ -276,16 +286,24 @@ export default function ViewQuotationPage() {
           const priceText = isNaN(priceNum) ? "Php 0" : `Php ${priceNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
           const shouldNumber = validItems.length > 1;
           const itemText = shouldNumber ? `${index + 1}.) ${item.description || ""}` : `• ${item.description || ""}`;
-          const priceX = pw - margin - 5;
-          const descriptionWidth = priceX - margin - 5 - 20;
           
-          const lines = doc.splitTextToSize(itemText, descriptionWidth);
+          // Calculate actual price width and reserve space for it
+          const priceWidth = doc.getTextWidth(priceText);
+          const priceX = pw - margin - 5;
+          const pricePadding = 10; // Space between description and price
+          const descriptionWidth = priceX - margin - 5 - priceWidth - pricePadding;
+          
+          // Split description into lines that fit within the available width
+          const lines = doc.splitTextToSize(itemText, Math.max(descriptionWidth, 50)); // Minimum 50 units width
           let firstLineY = y;
+          
+          // Draw description lines
           lines.forEach((l: string) => {
             doc.text(l, margin + 5, y);
             y += 4;
           });
           
+          // Draw price aligned to the right on the first line
           doc.text(priceText, priceX, firstLineY, { align: "right" });
           y += 2;
         });
@@ -504,7 +522,9 @@ export default function ViewQuotationPage() {
       doc.setFontSize(11);
       doc.text("Thank you for your Business!", pw / 2, y, { align: "center" });
 
-      doc.save(`quotation-${quotation.quotationNumber}.pdf`);
+      const sanitizeFilename = (str: string) => str.replace(/[<>:"/\\|?*]/g, '-').trim();
+      const filename = `${sanitizeFilename(quotation.quotationNumber)} ${sanitizeFilename(quotation.clientName)} - ${sanitizeFilename(quotation.jobDescription)} (Final Quotation).pdf`;
+      doc.save(filename);
     } catch (error) {
       console.error("Error generating PDF:", error);
       alert("Failed to generate PDF. Please try again.");
@@ -664,26 +684,7 @@ export default function ViewQuotationPage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => {
-                    if (typeof window !== "undefined") {
-                      const referrer = document.referrer;
-                      // Check if we came from quotations list (not a detail/edit page)
-                      if (referrer && referrer.includes("/admin/quotations") && !referrer.includes("/admin/quotations/")) {
-                        // If we came from quotations list, go back to it
-                        router.push("/admin/quotations");
-                      } else if (referrer && referrer.includes("/admin")) {
-                        // If we came from another admin page, go back once
-                        if (window.history.length > 1) {
-                          router.back();
-                        } else {
-                          router.push("/admin");
-                        }
-                      } else {
-                        // Default: go to admin dashboard
-                        router.push("/admin");
-                      }
-                    } else {
-                      router.push("/admin");
-                    }
+                    router.push("/admin/quotations");
                   }}
                   className="rounded-md border-2 border-slate-400 p-2.5 text-slate-800 hover:border-slate-500 transition flex items-center justify-center bg-white shadow-sm"
                   aria-label="Go back"

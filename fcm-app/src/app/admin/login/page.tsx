@@ -1,16 +1,32 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showInactiveToast, setShowInactiveToast] = useState(false);
+
+  // Check for inactivity logout
+  useEffect(() => {
+    if (searchParams.get('inactive') === 'true') {
+      setShowInactiveToast(true);
+      // Remove the query parameter from URL
+      router.replace('/admin/login', { scroll: false });
+      // Auto-hide toast after 5 seconds
+      const timer = setTimeout(() => {
+        setShowInactiveToast(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, router]);
 
   // Load remembered username on mount
   useEffect(() => {
@@ -88,6 +104,15 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {showInactiveToast && (
+            <div className="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <span>You have been logged out due to inactivity. Please sign in again.</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg">
@@ -160,5 +185,24 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md">
+          <div className="bg-white shadow-sm border border-slate-200 rounded-2xl p-8 md:p-10">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+              <p className="text-sm text-slate-600">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

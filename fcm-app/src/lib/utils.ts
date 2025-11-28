@@ -102,3 +102,21 @@ export function validatePhone(phone: string): string {
   return '';
 }
 
+/**
+ * Capitalize first letter of each word in a string
+ * Handles multiple spaces and preserves special characters
+ */
+export function capitalizeFirstLetters(text: string): string {
+  if (!text) return text;
+  
+  // Split by whitespace (spaces, tabs, etc.) and process each word
+  return text
+    .split(/\s+/)
+    .map(word => {
+      if (!word) return word;
+      // Capitalize first letter, lowercase the rest
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
