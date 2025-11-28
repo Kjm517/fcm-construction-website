@@ -284,7 +284,7 @@ export default function Home() {
                 { src: '/images/img2.png', alt: 'Jollibee Bulacao' },
               ]}
               title="Jollibee Bulacao"
-              description="Exterior Wall Repaint & Glass Installation Project"
+              description="Exterior Wall Repaint & Glass Cleaning"
             />
 
             <ProjectCard
