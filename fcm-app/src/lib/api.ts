@@ -86,6 +86,7 @@ export const transformQuotation = (dbQuotation: any) => {
     terms: dbQuotation.terms || [],
     termsTemplate: dbQuotation.terms_template || dbQuotation.termsTemplate || 'template1',
     items: dbQuotation.items || [],
+    status: dbQuotation.status || 'Draft',
     createdAt: dbQuotation.created_at ? new Date(dbQuotation.created_at).getTime() : (dbQuotation.createdAt || Date.now()),
     updatedAt: dbQuotation.updated_at ? new Date(dbQuotation.updated_at).getTime() : (dbQuotation.updatedAt || undefined),
     lastEditedBy: dbQuotation.last_edited_by || dbQuotation.lastEditedBy || undefined,
@@ -114,6 +115,7 @@ export const transformQuotationForDB = (quotation: any) => ({
   terms: quotation.terms || null,
   termsTemplate: quotation.termsTemplate || 'template1',
   items: quotation.items || null,
+  status: quotation.status || 'Draft',
   lastEditedBy: quotation.lastEditedBy || null,
   createdBy: quotation.createdBy || null,
 })
@@ -554,6 +556,7 @@ export const quotationsAPI = {
     const newQuotation = {
       ...quotation,
       id: Date.now().toString(),
+      status: quotation.status || 'Draft',
       createdAt: Date.now(),
     }
     quotations.push(newQuotation)

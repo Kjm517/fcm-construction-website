@@ -27,6 +27,7 @@ type Quotation = {
   terms?: string[];
   termsTemplate?: TermsTemplate;
   items?: QuotationItem[];
+  status?: string;
   createdAt: number;
   updatedAt?: number;
   lastEditedBy?: string;
@@ -761,6 +762,29 @@ export default function ViewQuotationPage() {
             <div>
               <span className="text-slate-500">Valid Until:</span>
               <span className="ml-2 font-medium text-slate-900">{quotation.validUntil}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Status:</span>
+              <span className="ml-2">
+                {(() => {
+                  const status = quotation.status || 'Draft';
+                  const statusColors: { [key: string]: string } = {
+                    'Draft': 'bg-slate-100 text-slate-700',
+                    'For Review': 'bg-yellow-100 text-yellow-700',
+                    'Email Sent': 'bg-blue-100 text-blue-700',
+                    'Sent': 'bg-blue-100 text-blue-700',
+                    'Approved': 'bg-green-100 text-green-700',
+                    'Rejected': 'bg-red-100 text-red-700',
+                    'Completed': 'bg-purple-100 text-purple-700',
+                  };
+                  const colorClass = statusColors[status] || statusColors['Draft'];
+                  return (
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+                      {status}
+                    </span>
+                  );
+                })()}
+              </span>
             </div>
           </div>
 

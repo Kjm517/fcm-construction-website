@@ -17,6 +17,7 @@ type Quotation = {
   attention: string;
   totalDue: string;
   terms?: string[];
+  status?: string;
   createdAt: number;
 };
 
@@ -64,6 +65,25 @@ export default function AdminQuotationsPage() {
     } catch {
       return dateString;
     }
+  };
+
+  const getStatusBadge = (status: string = 'Draft') => {
+    const statusColors: { [key: string]: string } = {
+      'Draft': 'bg-slate-100 text-slate-700',
+      'For Review': 'bg-yellow-100 text-yellow-700',
+      'Email Sent': 'bg-blue-100 text-blue-700',
+      'Approved': 'bg-green-100 text-green-700',
+      'Rejected': 'bg-red-100 text-red-700',
+      'Completed': 'bg-purple-100 text-purple-700',
+    };
+    
+    const colorClass = statusColors[status] || statusColors['Draft'];
+    
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+        {status}
+      </span>
+    );
   };
 
   useEffect(() => {
@@ -138,7 +158,7 @@ export default function AdminQuotationsPage() {
 
   return (
     <main className="min-h-screen bg-slate-100">
-      <div className="max-w-7xl mx-auto px-4 py-6 lg:py-10">
+      <div className="max-w-[95%] xl:max-w-[98%] mx-auto px-4 py-6 lg:py-10">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -297,25 +317,28 @@ export default function AdminQuotationsPage() {
             ) : (
               <div className="rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full min-w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                       Quotation #
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                       Client Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap min-w-[200px]">
                       Job Description
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                       Date
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                       Total Due
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                       Actions
                     </th>
                   </tr>
@@ -323,22 +346,29 @@ export default function AdminQuotationsPage() {
                 <tbody className="bg-white divide-y divide-slate-200">
                   {filteredQuotations.map((quotation) => (
                     <tr key={quotation.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                         {quotation.quotationNumber}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                        {quotation.clientName}
+                      <td className="px-4 py-4 text-sm text-slate-900">
+                        <div className="max-w-[200px] truncate" title={quotation.clientName}>
+                          {quotation.clientName}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate">
-                        {quotation.jobDescription}
+                      <td className="px-4 py-4 text-sm text-slate-600">
+                        <div className="max-w-[300px] truncate" title={quotation.jobDescription}>
+                          {quotation.jobDescription}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">
                         {formatDate(quotation.date)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {getStatusBadge(quotation.status)}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
                         {quotation.totalDue}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-3">
                           <Link
                             href={`/admin/quotations/${quotation.id}`}

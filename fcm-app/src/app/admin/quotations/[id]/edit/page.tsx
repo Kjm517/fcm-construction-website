@@ -27,6 +27,7 @@ type QuotationData = {
   terms: string[];
   termsTemplate?: TermsTemplate;
   items?: QuotationItem[];
+  status?: string;
 };
 
 type Quotation = {
@@ -43,6 +44,7 @@ type Quotation = {
   terms?: string[];
   termsTemplate?: TermsTemplate;
   items?: QuotationItem[];
+  status?: string;
   createdAt: number;
   updatedAt?: number;
   lastEditedBy?: string;
@@ -116,6 +118,7 @@ export default function EditQuotationPage() {
             terms: templateData.terms, // Always use terms from the template
             termsTemplate: template,
             items: items,
+            status: found.status || 'Draft',
           });
         }
       } catch (e) {
@@ -126,7 +129,7 @@ export default function EditQuotationPage() {
   }, [quotationId]);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -692,6 +695,27 @@ export default function EditQuotationPage() {
                   required
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="status" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Status *
+                </label>
+                <select
+                  id="status"
+                  name="status"
+                  value={formData.status || 'Draft'}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-900 bg-white"
+                >
+                  <option value="Draft">Draft</option>
+                  <option value="For Review">For Review</option>
+                  <option value="Email Sent">Email Sent</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                  <option value="Completed">Completed</option>
+                </select>
               </div>
 
               <div>

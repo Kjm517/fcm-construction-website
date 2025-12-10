@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
         terms: body.terms || null,
         terms_template: body.termsTemplate || 'template1',
         items: body.items || null,
+        status: body.status || 'Draft',
         created_by: body.createdBy || null,
         created_at: new Date().toISOString(),
       }, { status: 201 })
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
           terms: body.terms || null,
           terms_template: body.termsTemplate || 'template1',
           items: body.items || null,
+          status: body.status || 'Draft',
           created_by: body.createdBy || null,
         },
       ])
