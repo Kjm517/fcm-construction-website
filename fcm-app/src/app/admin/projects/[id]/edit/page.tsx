@@ -193,18 +193,13 @@ export default function EditProjectPage() {
       // Combine existing files with new files
       const allFiles = [...existingFiles, ...newFilesData];
       
-      console.log('Updating project with user:', currentUser);
-      console.log('Form data:', formData);
-      
       const updateData = { 
         ...formData, 
         lastEditedBy: currentUser,
         files: allFiles.length > 0 ? allFiles : null,
       };
-      console.log('Sending update data:', updateData);
       
       const updatedProject = await projectsAPI.update(projectId, updateData);
-      console.log('Project updated successfully:', updatedProject);
       
       // Clear any cached data and navigate back
       if (typeof window !== 'undefined') {

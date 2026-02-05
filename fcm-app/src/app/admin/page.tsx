@@ -272,28 +272,22 @@ export default function AdminHomePage() {
         ? localStorage.getItem('admin-user-id') 
         : null;
       const userPosition = position || null;
-      
-      // Build query - show all pending reminders
-      // Filter by user/position on the server side
+
       let queryUrl = `/api/task-reminders?status=pending`;
       if (userId) queryUrl += `&userId=${userId}`;
       if (userPosition) queryUrl += `&userPosition=${userPosition}`;
       
-      console.log('Loading reminders with URL:', queryUrl);
       
       const response = await fetch(queryUrl);
       if (response.ok) {
         const data = await response.json();
-        console.log('Loaded reminders:', data.length, data);
-        
-        // Show ALL reminders, sorted by reminder date (oldest first)
+
         const sortedData = [...data].sort((a: Reminder, b: Reminder) => {
           const dateA = new Date(a.reminder_date).getTime();
           const dateB = new Date(b.reminder_date).getTime();
           return dateA - dateB;
         });
         
-        console.log('All reminders (sorted by date):', sortedData.length);
         setReminders(sortedData);
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -729,8 +723,7 @@ export default function AdminHomePage() {
   const handleSubmitCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    console.log('Form submitted with data:', formData);
+
     
     if (!formData.title || !formData.reminderDate || !formData.reminderTime) {
       alert('Please fill in all required fields (Title, Reminder Date, Reminder Time)');
@@ -781,7 +774,6 @@ export default function AdminHomePage() {
       }
 
       const result = await response.json().catch(() => null);
-      console.log('Reminder created successfully:', result);
       
       setShowCreateModal(false);
       setFormData({
@@ -906,6 +898,12 @@ export default function AdminHomePage() {
                   className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
                 >
                   Quotations
+                </Link>
+                <Link
+                  href="/admin/billing"
+                  className="rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
+                >
+                  Billing
                 </Link>
                 {(position === 'System Administrator' || position === 'Admin' || position === 'Manager') && (
                   <Link

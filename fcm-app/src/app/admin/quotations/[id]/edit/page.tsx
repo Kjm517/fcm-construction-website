@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import { quotationsAPI } from "@/lib/api";
-import { formatCurrency, calculateTotalFromItems, formatDateForPDF, capitalizeFirstLetters } from "@/lib/utils";
+import { formatCurrency, calculateTotalFromItems, formatDateForPDF, capitalizeSentence } from "@/lib/utils";
 import { getCurrentUserDisplayName } from "@/lib/auth";
 import { getTermsTemplate, type TermsTemplate } from "@/lib/terms-templates";
 
@@ -102,9 +102,6 @@ export default function EditQuotationPage() {
           const totalFormatted = calculatedTotal || "Php 0.00";
           const templateData = getTermsTemplate(template, totalFormatted);
           
-          console.log('Loading quotation - Template:', template, 'Found termsTemplate:', found.termsTemplate);
-          console.log('Regenerated terms:', templateData.terms);
-          
           setFormData({
             quotationNumber: found.quotationNumber,
             date: found.date,
@@ -139,10 +136,10 @@ export default function EditQuotationPage() {
     const name = e.target.name;
     const value = e.target.value;
     
-    // Auto-capitalize first letters for text fields when user leaves the field
+    // Auto-capitalize first letter for text fields when user leaves the field
     const fieldsToCapitalize = ['clientName', 'jobDescription', 'installationAddress', 'attention'];
     if (fieldsToCapitalize.includes(name) && value) {
-      const capitalizedValue = capitalizeFirstLetters(value);
+      const capitalizedValue = capitalizeSentence(value);
       if (capitalizedValue !== value) {
         setFormData((prev) => ({
           ...prev,
@@ -163,7 +160,6 @@ export default function EditQuotationPage() {
   const handleTemplateChange = (template: TermsTemplate) => {
     const totalFormatted = formData.totalDue || "Php 0.00";
     const templateData = getTermsTemplate(template, totalFormatted);
-    console.log('Template changed to:', template, 'Terms:', templateData.terms);
     setFormData((prev) => ({ 
       ...prev, 
       terms: templateData.terms,
@@ -177,8 +173,8 @@ export default function EditQuotationPage() {
     if (!updated[index]) {
       updated[index] = { description: "", price: "" };
     }
-    // Auto-capitalize first letters for descriptions
-    const processedValue = field === "description" ? capitalizeFirstLetters(value) : value;
+    // Auto-capitalize first letter for descriptions
+    const processedValue = field === "description" ? capitalizeSentence(value) : value;
     updated[index] = { ...updated[index], [field]: processedValue };
     
     // Calculate total from all items
@@ -595,9 +591,6 @@ export default function EditQuotationPage() {
         terms: templateData.terms, // Always use terms from the current template
       };
       
-      console.log('Saving quotation with template:', template, 'Terms:', templateData.terms);
-      console.log('Data to save:', JSON.stringify(dataToSave, null, 2));
-      
       await quotationsAPI.update(quotationId, dataToSave);
       router.push(`/admin/quotations/${quotationId}`);
     } catch (error) {
@@ -714,7 +707,9 @@ export default function EditQuotationPage() {
                   <option value="Email Sent">Email Sent</option>
                   <option value="Approved">Approved</option>
                   <option value="Rejected">Rejected</option>
+                  <option value="Work In Progress">Work In Progress</option>
                   <option value="Completed">Completed</option>
+                  <option value="For Billing">For Billing</option>
                 </select>
               </div>
 

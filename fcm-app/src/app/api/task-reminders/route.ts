@@ -62,7 +62,6 @@ export async function GET(request: NextRequest) {
       const endOfDay = new Date(dateObj);
       endOfDay.setUTCHours(23, 59, 59, 999);
 
-      console.log('Filtering by date:', date, 'Range:', startOfDay.toISOString(), 'to', endOfDay.toISOString());
 
       query = query
         .gte('reminder_date', startOfDay.toISOString())
@@ -84,14 +83,10 @@ export async function GET(request: NextRequest) {
     // Filter by user/position tags if provided (client-side filtering for now)
     let filteredData = data || [];
     
-    console.log('Raw reminders from DB:', filteredData.length);
-    console.log('Filtering with userId:', userId, 'userPosition:', userPosition);
-    
     if (userId || userPosition) {
       filteredData = filteredData.filter((reminder: any) => {
         // Always include if user created it (regardless of tags)
         if (userId && reminder.created_by === userId) {
-          console.log('✓ Including reminder (created by user):', reminder.id, reminder.title, 'created_by:', reminder.created_by, 'userId:', userId);
           return true;
         }
         

@@ -10,25 +10,16 @@ export async function GET(
   const resolvedParams = params instanceof Promise ? await params : params
   const quotationId = resolvedParams.id
 
-  console.log('=== QUOTATION API CALL ===')
-  console.log('Quotation ID:', quotationId)
-  console.log('Supabase configured:', isSupabaseConfigured())
-
   if (!isSupabaseConfigured()) {
-    console.log('Supabase not configured, returning null for quotation:', quotationId)
     return NextResponse.json(null)
   }
 
   try {
-    console.log('Querying Supabase for quotation:', quotationId)
-    
     const { data, error } = await supabase!
       .from('quotations')
       .select('*')
       .eq('id', quotationId)
       .single()
-
-    console.log('Supabase query result:', { data: data ? 'FOUND' : 'NULL', error: error ? error.message : 'NONE' })
 
     if (error) {
       console.error('Supabase error details:', {
@@ -40,12 +31,9 @@ export async function GET(
       
       // Check if it's a "not found" error
       if (error.code === 'PGRST116' || error.message?.includes('No rows') || error.message?.includes('not found')) {
-        console.log('Quotation not found in database (PGRST116)')
         return NextResponse.json(null)
       }
-      
-      // For other errors, return error details for debugging
-      console.log('Supabase error (not PGRST116), returning error details')
+
       return NextResponse.json(
         { 
           error: error.message,
@@ -62,11 +50,6 @@ export async function GET(
       return NextResponse.json(null)
     }
 
-    console.log('✅ Quotation found in database:', {
-      id: data.id,
-      quotation_number: data.quotation_number,
-      client_name: data.client_name
-    })
     return NextResponse.json(data)
   } catch (error: any) {
     console.error('Unexpected error fetching quotation:', error)

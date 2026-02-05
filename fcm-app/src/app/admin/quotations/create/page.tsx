@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import { quotationsAPI } from "@/lib/api";
-import { formatCurrency, calculateTotalFromItems, formatDateForPDF, capitalizeFirstLetters } from "@/lib/utils";
+import { formatCurrency, calculateTotalFromItems, formatDateForPDF, capitalizeSentence } from "@/lib/utils";
 import { getTermsTemplate, type TermsTemplate } from "@/lib/terms-templates";
 
 type QuotationItem = {
@@ -131,10 +131,10 @@ export default function CreateQuotationPage() {
     const name = e.target.name;
     const value = e.target.value;
     
-    // Auto-capitalize first letters for text fields when user leaves the field
+    // Auto-capitalize first letter for text fields when user leaves the field
     const fieldsToCapitalize = ['clientName', 'jobDescription', 'installationAddress', 'attention'];
     if (fieldsToCapitalize.includes(name) && value) {
-      const capitalizedValue = capitalizeFirstLetters(value);
+      const capitalizedValue = capitalizeSentence(value);
       if (capitalizedValue !== value) {
         setFormData((p) => ({
           ...p,
@@ -165,8 +165,8 @@ export default function CreateQuotationPage() {
     if (!updated[index]) {
       updated[index] = { description: "", price: "" };
     }
-    // Auto-capitalize first letters for descriptions
-    const processedValue = field === "description" ? capitalizeFirstLetters(value) : value;
+    // Auto-capitalize first letter for descriptions
+    const processedValue = field === "description" ? capitalizeSentence(value) : value;
     updated[index] = { ...updated[index], [field]: processedValue };
     
     // Calculate total from all items
@@ -587,7 +587,9 @@ export default function CreateQuotationPage() {
                   <option value="Email Sent">Email Sent</option>
                   <option value="Approved">Approved</option>
                   <option value="Rejected">Rejected</option>
+                  <option value="Work In Progress">Work In Progress</option>
                   <option value="Completed">Completed</option>
+                  <option value="For Billing">For Billing</option>
                 </select>
               </div>
 

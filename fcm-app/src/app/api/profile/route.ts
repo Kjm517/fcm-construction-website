@@ -157,9 +157,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(currentData);
     }
 
-    console.log('Updating profile with data:', updateData);
-    console.log('User ID:', userId);
-
     const { data, error } = await supabase!
       .from('users')
       .update(updateData)

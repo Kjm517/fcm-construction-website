@@ -10,27 +10,16 @@ export async function GET(
   const resolvedParams = params instanceof Promise ? await params : params
   const projectId = resolvedParams.id
 
-  console.log('=== PROJECT API CALL ===')
-  console.log('Project ID:', projectId)
-  console.log('Supabase configured:', isSupabaseConfigured())
-  console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'NOT SET')
-  console.log('Supabase Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'NOT SET')
-
   if (!isSupabaseConfigured()) {
-    console.log('Supabase not configured, returning null for project:', projectId)
     return NextResponse.json(null)
   }
 
   try {
-    console.log('Querying Supabase for project:', projectId)
-    
     const { data, error } = await supabase!
       .from('projects')
       .select('*')
       .eq('id', projectId)
       .single()
-
-    console.log('Supabase query result:', { data: data ? 'FOUND' : 'NULL', error: error ? error.message : 'NONE' })
 
     if (error) {
       console.error('Supabase error details:', {
@@ -42,12 +31,9 @@ export async function GET(
       
       // Check if it's a "not found" error
       if (error.code === 'PGRST116' || error.message?.includes('No rows') || error.message?.includes('not found')) {
-        console.log('Project not found in database (PGRST116)')
         return NextResponse.json(null)
       }
-      
-      // For other errors, return error details for debugging
-      console.log('Supabase error (not PGRST116), returning error details')
+
       return NextResponse.json(
         { 
           error: error.message,
@@ -60,7 +46,6 @@ export async function GET(
     }
 
     if (!data) {
-      console.log('No data returned from database (data is null)')
       return NextResponse.json(null)
     }
 
@@ -92,12 +77,6 @@ export async function GET(
       tasks: tasks,
     }
 
-    console.log('✅ Project found in database:', {
-      id: data.id,
-      project_name: data.project_name,
-      client_name: data.client_name,
-      tasks_count: tasks.length
-    })
     return NextResponse.json(projectWithTasks)
   } catch (error: any) {
     console.error('Unexpected error fetching project:', error)
@@ -141,12 +120,7 @@ export async function PUT(
 
   try {
     const body = await request.json()
-    
-    console.log('Project update request body:', body);
-    console.log('lastEditedBy value:', body.lastEditedBy);
-    
-    // Build update object - only include last_edited_by if it's provided
-    // This allows the update to work even if the column doesn't exist yet
+
     const updateData: any = {
       project_name: body.projectName,
       client_name: body.clientName,
@@ -205,13 +179,12 @@ export async function PUT(
           ...dataWithoutColumn,
           last_edited_by: body.lastEditedBy || null,
         };
-        console.log('Updated project data (without last_edited_by column):', responseData);
+
         return NextResponse.json(responseData);
       }
       throw error;
     }
 
-    console.log('Updated project data:', data);
     return NextResponse.json(data)
   } catch (error: any) {
     console.error('Error updating project:', error)

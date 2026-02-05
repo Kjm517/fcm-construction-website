@@ -1,6 +1,16 @@
 // Common utility functions
 
 /**
+ * Format a number with comma and .00 (e.g., 2900 -> "2,900.00")
+ */
+export function formatAmountDisplay(val: string | number): string {
+  if (val === '' || val == null) return '';
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.]/g, ''));
+  if (isNaN(num)) return typeof val === 'string' ? val : '';
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
  * Format a number or string as currency (Php format)
  */
 export function formatCurrency(amount: string | number): string {
@@ -120,3 +130,32 @@ export function capitalizeFirstLetters(text: string): string {
     .join(' ');
 }
 
+/**
+ * Capitalize only the first letter of the first word, and first letter after periods
+ * Example: "the fox is jumping" -> "The fox is jumping"
+ * Example: "hello. world" -> "Hello. World"
+ */
+export function capitalizeSentence(text: string): string {
+  if (!text) return text;
+  
+  // Split by periods followed by space, capitalize first letter after each
+  return text
+    .split(/(\.\s+)/)
+    .map((segment, index) => {
+      if (!segment) return segment;
+      
+      // If it's a period with space, keep it as is
+      if (segment.match(/^\.\s+$/)) {
+        return segment;
+      }
+      
+      // For the first segment or segments after periods, capitalize first letter
+      if (index === 0 || (index > 0 && text.split(/(\.\s+)/)[index - 1]?.match(/^\.\s+$/))) {
+        // Capitalize first letter, keep rest as is
+        return segment.charAt(0).toUpperCase() + segment.slice(1);
+      }
+      
+      return segment;
+    })
+    .join('');
+}

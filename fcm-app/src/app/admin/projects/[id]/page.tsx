@@ -66,13 +66,9 @@ export default function AdminProjectPage() {
     setProject(null); // Clear previous project to force fresh load
     
     try {
-      console.log('Loading project with ID:', projectId);
-      
       const data = await projectsAPI.getById(projectId);
-      console.log('API returned project data:', data);
       
       if (data && (data.id || data.projectName)) {
-        console.log('Setting project from API:', data);
         setProject(data);
         setLoading(false);
         return;
@@ -84,7 +80,6 @@ export default function AdminProjectPage() {
         if (stored) {
           try {
             const projects = JSON.parse(stored);
-            console.log('Projects in localStorage:', projects.length);
             
             const found = projects.find((p: any) => {
               const pId = String(p.id || '').toLowerCase().trim();

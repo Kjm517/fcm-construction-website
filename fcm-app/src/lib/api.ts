@@ -594,3 +594,197 @@ export const quotationsAPI = {
   },
 }
 
+// Helper to transform billing database fields to frontend format
+export const transformBilling = (dbBilling: any) => {
+  if (!dbBilling) return null
+  return {
+    id: dbBilling.id,
+    date: dbBilling.date,
+    salesInvoiceNumber: dbBilling.sales_invoice_number ?? dbBilling.salesInvoiceNumber,
+    bsNumber: dbBilling.bs_number ?? dbBilling.bsNumber ?? '',
+    quoteNumber: dbBilling.quote_number ?? dbBilling.quoteNumber ?? '',
+    description: dbBilling.description ?? '',
+    address: dbBilling.address ?? '',
+    amount: dbBilling.amount ?? 0,
+    payment: dbBilling.payment ?? dbBilling.payment ?? '',
+    checkInfo: dbBilling.check_info ?? dbBilling.checkInfo ?? '',
+    checkNumber: dbBilling.check_number ?? dbBilling.checkNumber ?? '',
+    paymentDate: dbBilling.payment_date ?? dbBilling.paymentDate ?? '',
+    status: dbBilling.status ?? (dbBilling.payment && String(dbBilling.payment).trim() ? 'Paid' : 'Not Paid'),
+    createdAt: dbBilling.created_at ?? dbBilling.createdAt,
+    updatedAt: dbBilling.updated_at ?? dbBilling.updatedAt,
+    lastEditedBy: dbBilling.last_edited_by ?? dbBilling.lastEditedBy ?? '',
+  }
+}
+
+// Helper to transform frontend format to database format for billing
+export const transformBillingForDB = (billing: any) => ({
+  date: billing.date,
+  salesInvoiceNumber: billing.salesInvoiceNumber,
+  bsNumber: billing.bsNumber || null,
+  quoteNumber: billing.quoteNumber || null,
+  description: billing.description,
+  address: billing.address,
+  amount: billing.amount,
+  payment: billing.payment || null,
+  checkInfo: billing.checkInfo || null,
+  checkNumber: billing.checkNumber || null,
+  paymentDate: billing.paymentDate || null,
+  status: billing.status || 'Not Paid',
+  lastEditedBy: billing.lastEditedBy || null,
+})
+
+// Billing API
+export const billingAPI = {
+  async getAll(): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE}/billing`)
+      const data = await response.json()
+      if (Array.isArray(data)) {
+        return data.map(transformBilling).filter(Boolean)
+      }
+      return this.getFromLocalStorage()
+    } catch (error) {
+      console.error('Error fetching billing:', error)
+      return this.getFromLocalStorage()
+    }
+  },
+
+  async getById(id: string): Promise<any | null> {
+    try {
+      const encodedId = encodeURIComponent(id)
+      const response = await fetch(`${API_BASE}/billing/${encodedId}`)
+      if (!response.ok) {
+        const local = this.getByIdFromLocalStorage(id)
+        return local ? transformBilling(local) : null
+      }
+      const data = await response.json()
+      if (data && data.error) {
+        const local = this.getByIdFromLocalStorage(id)
+        return local ? transformBilling(local) : null
+      }
+      if (data && data.id) return transformBilling(data)
+      const local = this.getByIdFromLocalStorage(id)
+      return local ? transformBilling(local) : null
+    } catch (error) {
+      console.error('Error fetching billing:', error)
+      const local = this.getByIdFromLocalStorage(id)
+      return local ? transformBilling(local) : null
+    }
+  },
+
+  async create(billing: any): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE}/billing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(transformBillingForDB(billing)),
+      })
+      const data = await response.json()
+      if (data && data.id && data.id.startsWith('temp-')) {
+        return this.createInLocalStorage(billing)
+      }
+      if (data && data.id) return transformBilling(data)
+      return this.createInLocalStorage(billing)
+    } catch (error) {
+      console.error('Error creating billing:', error)
+      return this.createInLocalStorage(billing)
+    }
+  },
+
+  async update(id: string, billing: any): Promise<any> {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (typeof window !== 'undefined') {
+        const userId = localStorage.getItem('admin-user-id')
+        if (userId) headers['x-user-id'] = userId
+      }
+      const response = await fetch(`${API_BASE}/billing/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(transformBillingForDB(billing)),
+      })
+      const data = await response.json()
+      if (data && data.id) return transformBilling(data)
+      return this.updateInLocalStorage(id, billing)
+    } catch (error) {
+      console.error('Error updating billing:', error)
+      return this.updateInLocalStorage(id, billing)
+    }
+  },
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/billing/${id}`, { method: 'DELETE' })
+      const data = await response.json()
+      if (data && data.success) return true
+      return this.deleteFromLocalStorage(id)
+    } catch (error) {
+      console.error('Error deleting billing:', error)
+      return this.deleteFromLocalStorage(id)
+    }
+  },
+
+  getFromLocalStorage(): any[] {
+    if (typeof window === 'undefined') return []
+    const stored = localStorage.getItem('billing')
+    if (stored) {
+      try {
+        return JSON.parse(stored).map(transformBilling).filter(Boolean)
+      } catch {
+        return []
+      }
+    }
+    return []
+  },
+
+  getByIdFromLocalStorage(id: string): any | null {
+    const items = this.getFromLocalStorage()
+    return items.find((b: any) => b.id === id) || null
+  },
+
+  createInLocalStorage(billing: any): any {
+    const items = this.getFromLocalStorage()
+    const raw = JSON.parse(localStorage.getItem('billing') || '[]')
+    const newItem = {
+      id: Date.now().toString(),
+      date: billing.date,
+      salesInvoiceNumber: billing.salesInvoiceNumber,
+      bsNumber: billing.bsNumber || '',
+      quoteNumber: billing.quoteNumber || '',
+      description: billing.description,
+      address: billing.address,
+      amount: billing.amount || 0,
+      payment: billing.payment || '',
+      checkInfo: billing.checkInfo || '',
+      checkNumber: billing.checkNumber || '',
+      paymentDate: billing.paymentDate || '',
+      status: billing.status || 'Not Paid',
+    }
+    raw.push(newItem)
+    if (typeof window !== 'undefined') localStorage.setItem('billing', JSON.stringify(raw))
+    return newItem
+  },
+
+  updateInLocalStorage(id: string, billing: any): any {
+    const raw = JSON.parse(localStorage.getItem('billing') || '[]')
+    const index = raw.findIndex((b: any) => b.id === id)
+    if (index === -1) return null
+    raw[index] = {
+      ...raw[index],
+      ...transformBillingForDB(billing),
+      id,
+      updatedAt: Date.now(),
+      lastEditedBy: billing.lastEditedBy || raw[index].lastEditedBy || '',
+    }
+    if (typeof window !== 'undefined') localStorage.setItem('billing', JSON.stringify(raw))
+    return transformBilling(raw[index])
+  },
+
+  deleteFromLocalStorage(id: string): boolean {
+    const raw = JSON.parse(localStorage.getItem('billing') || '[]')
+    const filtered = raw.filter((b: any) => b.id !== id)
+    if (typeof window !== 'undefined') localStorage.setItem('billing', JSON.stringify(filtered))
+    return true
+  },
+}
