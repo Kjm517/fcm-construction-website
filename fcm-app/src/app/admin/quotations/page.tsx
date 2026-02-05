@@ -38,6 +38,13 @@ export default function AdminQuotationsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('date-desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
+
+  const pageOptions = [15, 20, 25, 30, 50] as const;
+  const totalPages = Math.ceil(filteredQuotations.length / itemsPerPage) || 1;
+  const startIdx = (currentPage - 1) * itemsPerPage;
+  const paginatedQuotations = filteredQuotations.slice(startIdx, startIdx + itemsPerPage);
 
   const handleBack = () => {
     if (typeof window !== "undefined") {
@@ -105,6 +112,14 @@ export default function AdminQuotationsPage() {
     }
     loadQuotations();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, itemsPerPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     let filtered = [...quotations];
@@ -276,6 +291,20 @@ export default function AdminQuotationsPage() {
                 <label htmlFor="sort" className="text-sm font-medium text-slate-700 whitespace-nowrap">
                   Sort by:
                 </label>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="itemsPerPage" className="text-sm font-medium text-slate-600 whitespace-nowrap">Show</label>
+                  <select
+                    id="itemsPerPage"
+                    value={itemsPerPage}
+                    onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                    className="block px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+                  >
+                    {pageOptions.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                  <span className="text-sm text-slate-600">per page</span>
+                </div>
                 <select
                   id="sort"
                   value={sortOption}
@@ -346,7 +375,7 @@ export default function AdminQuotationsPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200">
-                  {filteredQuotations.map((quotation) => (
+                  {paginatedQuotations.map((quotation) => (
                     <tr key={quotation.id} className="hover:bg-slate-50 transition">
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                         {quotation.quotationNumber}
@@ -391,6 +420,45 @@ export default function AdminQuotationsPage() {
                 </tbody>
               </table>
             </div>
+                {totalPages > 1 && (
+                  <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-slate-600">
+                      Showing {startIdx + 1}–{Math.min(startIdx + itemsPerPage, filteredQuotations.length)} of {filteredQuotations.length}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage <= 1}
+                        className="rounded px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setCurrentPage(p)}
+                          className={`min-w-[2rem] rounded px-2 py-1.5 text-sm font-medium border ${
+                            currentPage === p
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage >= totalPages}
+                        className="rounded px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
           </div>
             )}
           </>
